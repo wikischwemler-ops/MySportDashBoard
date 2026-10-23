@@ -80,6 +80,13 @@ nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line
 .bighead .note{color:var(--muted);font-size:.6em;margin-left:10px;font-family:var(--f-body);font-weight:400}
 .bigbox{flex:1;min-height:0;position:relative;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
 #bigclose{font-size:.95em;padding:8px 14px;min-height:40px}
+.lock{position:fixed;inset:0;z-index:60;background:var(--bg);display:grid;place-items:center;padding:24px max(16px,env(safe-area-inset-right,0px)) 24px max(16px,env(safe-area-inset-left,0px))}
+.lock form{width:min(100%,380px);display:flex;flex-direction:column;gap:12px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px}
+.lock h2{font-family:var(--f-display);font-weight:600;font-size:1.5em;margin:0}
+.lock input[type=password]{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);min-height:44px}
+.lock input[type=password]:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.lock button{font:600 1em var(--f-body);padding:10px 14px;border-radius:8px;border:0;background:var(--ink);color:var(--panel);cursor:pointer;min-height:44px}
+.lock .err{color:var(--bad);font-size:.9em;min-height:1.2em}
 .minis{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,230px),1fr));gap:10px}
 .mini{all:unset;cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:10px 12px 6px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .mini:hover{border-color:var(--c)}
@@ -179,12 +186,24 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
         <button data-m="3">3 M</button><button data-m="6">6 M</button><button data-m="12">1 J</button><button data-m="24">2 J</button><button data-m="48" aria-pressed="true">4 J</button>
       </div>
       <button class="btn" id="upd" hidden>Jetzt aktualisieren</button>
+      <button class="btn" id="logout" hidden>Sperren</button>
       <label class="btn" for="file">JSON laden</label>
       <input type="file" id="file" accept=".json,application/json" hidden>
     </div>
   </header>
   <div id="notice" hidden></div>
   <nav class="tabs" role="tablist" id="tabs"></nav>
+  <div id="lock" class="lock" hidden>
+    <form id="lockform" autocomplete="on">
+      <h2>Garmin Dashboard</h2>
+      <div class="hint">Die Daten sind verschlüsselt. Mit deinem Dashboard-Passwort werden sie nur hier im Browser entschlüsselt.</div>
+      <label class="slot" for="lockpw">Passwort</label>
+      <input type="password" id="lockpw" autocomplete="current-password" required>
+      <label class="hint" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="lockremember"> Auf diesem Gerät merken</label>
+      <button type="submit" id="lockbtn">Entsperren</button>
+      <div class="err" id="lockerr" role="alert"></div>
+    </form>
+  </div>
   <div id="big" class="big" hidden role="dialog" aria-modal="true" aria-labelledby="bigt">
     <div class="bighead"><h2 id="bigt"></h2><div class="opts" id="bigopts"></div><button class="btn" id="bigclose">Schließen ✕</button></div>
     <div class="bigbox"><canvas></canvas></div>
@@ -508,6 +527,8 @@ function drawCalendar(){
 const isLocal=()=>location.protocol.startsWith("http")&&/^(127\.0\.0\.1|localhost)$/.test(location.hostname);
 async function getDetail(a){
   if((DATA.meta||{}).source==="demo")return synthDetail(a);
+  if(ENC){try{return await fetchEnc("details/"+a.id+".enc");}catch(e){
+    throw new Error(e.message==="404"?"Die Verläufe dieser Aktivität sind noch nicht synchronisiert. Der nächtliche Abgleich lädt sie nach (bis zu 250 Aktivitäten pro Nacht, neueste zuerst).":"Verläufe konnten nicht geladen werden: "+e.message);}}
   if(isLocal()){let j;try{const r=await fetch("/api/activity/"+a.id);j=await r.json();}catch(e){throw new Error("Das Programm antwortet nicht. Läuft das Konsolenfenster von „Dashboard_starten.bat“ noch?");}
     if(j.error)throw new Error(j.error);return j;}
   throw new Error("Die Verläufe einer Aktivität lädt das Programm direkt bei Garmin. Öffne das Dashboard dafür über „Dashboard_starten.bat“.");
@@ -751,7 +772,34 @@ function setActs(j){const L=Array.isArray(j)?j:(j&&j.activities);if(!DATA||!Arra
 function loadActs(){if(!DATA||(DATA.activities&&DATA.activities.length&&!DATA._actsFile))return;
   fetch("activities.json?"+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(j=>{if(setActs(j))DATA._actsFile=true;})
   .catch(()=>{if(window.GARMIN_ACTIVITIES)return setActs(window.GARMIN_ACTIVITIES);const s=document.createElement("script");s.src="activities.js?"+Date.now();s.onload=()=>setActs(window.GARMIN_ACTIVITIES);document.head.append(s);});}
-getData();
+// ---- GitHub Pages: verschlüsselte Daten ----
+let ENC=null,KEY=null;
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const toB64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf)));
+async function deriveKey(pw){const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveKey"]);
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt:b64(ENC.salt),iterations:ENC.iterations,hash:"SHA-256"},base,{name:"AES-GCM",length:256},true,["decrypt"]);}
+async function decRaw(buf,key=KEY){buf=new Uint8Array(buf);return crypto.subtle.decrypt({name:"AES-GCM",iv:buf.slice(0,12)},key,buf.slice(12));}
+async function decJson(buf){const pt=await decRaw(buf);const st=new Blob([pt]).stream().pipeThrough(new DecompressionStream("gzip"));return JSON.parse(await new Response(st).text());}
+async function fetchEnc(path){const r=await fetch(path+"?"+(ENC.generated_at||""),{cache:"no-cache"});if(!r.ok)throw new Error(r.status===404?"404":"HTTP "+r.status);return decJson(await r.arrayBuffer());}
+async function keyOk(key){try{return new TextDecoder().decode(await decRaw(b64(ENC.check),key))==="garmin-dashboard-ok";}catch(e){return false;}}
+async function unlockWith(key,remember){KEY=key;
+  if(remember){try{localStorage.setItem("gd-key",JSON.stringify({salt:ENC.salt,k:toB64(await crypto.subtle.exportKey("raw",key))}));}catch(e){}}
+  document.getElementById("lock").hidden=true;document.getElementById("logout").hidden=false;
+  try{load(await fetchEnc("data.enc"));}catch(e){return showErr("Die Daten konnten nicht geladen werden: "+e.message);}
+  try{setActs(await fetchEnc("activities.enc"));DATA._actsFile=true;}catch(e){}
+  const sub=document.getElementById("sub");if(sub&&ENC.generated_at)sub.insertAdjacentHTML("beforeend",`<span>·</span><span>Sync ${ENC.generated_at.replace("T"," ")}</span>`);}
+async function startEncrypted(){
+  try{const st=JSON.parse(localStorage.getItem("gd-key")||"null");
+    if(st&&st.salt===ENC.salt){const k=await crypto.subtle.importKey("raw",b64(st.k),{name:"AES-GCM"},true,["decrypt"]);if(await keyOk(k))return unlockWith(k,false);}}catch(e){}
+  document.getElementById("sub").textContent="Gesperrt";document.getElementById("lock").hidden=false;document.getElementById("lockpw").focus();}
+document.getElementById("lockform").addEventListener("submit",async e=>{e.preventDefault();const err=document.getElementById("lockerr"),btn=document.getElementById("lockbtn");
+  err.textContent="";btn.disabled=true;btn.textContent="Entschlüssele …";
+  try{const k=await deriveKey(document.getElementById("lockpw").value);
+    if(!(await keyOk(k))){err.textContent="Das Passwort stimmt nicht. Es ist das Secret DASHBOARD_PASSWORD aus GitHub.";return;}
+    document.getElementById("lockpw").value="";await unlockWith(k,document.getElementById("lockremember").checked);}
+  catch(x){err.textContent="Entschlüsseln fehlgeschlagen: "+x.message;}finally{btn.disabled=false;btn.textContent="Entsperren";}});
+document.getElementById("logout").onclick=()=>{try{localStorage.removeItem("gd-key");}catch(e){}location.reload();};
+fetch("site.json",{cache:"no-cache"}).then(r=>r.ok?r.json():null).then(j=>{if(j&&j.encrypted&&window.crypto&&crypto.subtle){ENC=j;startEncrypted();}else getData();}).catch(()=>getData());
 // Lokales Programm: Aktualisieren-Knopf + Status
 const upd=document.getElementById("upd");let wasRunning=false;
 function poll(){fetch("/api/status",{cache:"no-store"}).then(r=>r.ok?r.json():Promise.reject()).then(s=>{
