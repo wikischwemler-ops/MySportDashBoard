@@ -1,0 +1,15 @@
+# Persönliche Garmin-Daten und Zugangsdaten – nie ins Repository
+.garminconnect/
+cache/
+data.json
+data.js
+activities.json
+activities.js
+
+# Python / Build
+__pycache__/
+*.pyc
+build/
+dist/
+*.spec
+GarminDashboard.exe

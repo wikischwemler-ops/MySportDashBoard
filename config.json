@@ -1,0 +1,7 @@
+{
+  "tokens": "%USERPROFILE%\\.garminconnect",
+  "years": 4,
+  "refresh_hours": 6,
+  "port": 8765,
+  "open_browser": true
+}
