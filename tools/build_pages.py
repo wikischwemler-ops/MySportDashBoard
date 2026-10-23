@@ -117,20 +117,55 @@ def _describe(raw: str) -> str:
             continue
     return f"kein JSON/Base64 erkennbar (Länge {len(raw)} Zeichen)"
 
+def _single_value(raw: str):
+    """Ein einzelner Wert aus garmin_tokens.json? Liefert (Feldname, Wert) oder None."""
+    v = raw.strip().strip('"').strip("'").strip(",").strip()
+    if v.count(".") == 2 and v.startswith("eyJ"):                       # JWT → Zugangsschlüssel
+        return ("di_token", v)
+    try:
+        d = json.loads(base64.b64decode(v + "==", validate=False).decode("utf-8"))
+        if isinstance(d, dict) and "refreshTokenValue" in d:            # Base64 {garminGuid, refreshTokenValue}
+            return ("di_refresh_token", v)
+    except Exception:
+        pass
+    if 3 <= len(v) <= 200 and " " not in v and "{" not in v:            # kurzer Bezeichner → Client-ID
+        return ("di_client_id", v)
+    return None
+
 def prepare_tokens() -> Path:
     tok = WORK / ".garminconnect"
     if tok.exists() and any(tok.glob("*.json")):
         return tok
+    files, di = {}, {}
     raw = os.environ.get("GARMIN_TOKENS", "")
     if raw.strip():
         files = _token_files(raw)
-        if files:
-            tok.mkdir(parents=True, exist_ok=True)
-            for name, content in files.items(): (tok / name).write_text(content, "utf-8")
-            log(f"Tokens aus Secret GARMIN_TOKENS übernommen: {', '.join(sorted(files))}")
-        else:
-            log(f"GARMIN_TOKENS hat ein unbekanntes Format: {_describe(raw)}. "
-                "Bitte den Wert mit tools/garmin_tokens_fuer_github.bat erzeugen und komplett einfügen.")
+        if not files:
+            sv = _single_value(raw)
+            if sv: di[sv[0]] = sv[1]
+            else:
+                log(f"GARMIN_TOKENS hat ein unbekanntes Format: {_describe(raw)}.")
+    # Einzelne Secrets (überschreiben bzw. ergänzen)
+    for env, key in (("GARMIN_DI_TOKEN", "di_token"), ("GARMIN_DI_REFRESH_TOKEN", "di_refresh_token"), ("GARMIN_DI_CLIENT_ID", "di_client_id")):
+        v = os.environ.get(env, "").strip().strip('"').strip("'").strip(",").strip()
+        if v: di[key] = v
+    if di:
+        base = {}
+        if "garmin_tokens.json" in files:
+            try: base = json.loads(files["garmin_tokens.json"])
+            except Exception: base = {}
+        base.update(di)
+        missing = [k for k in ("di_token", "di_refresh_token", "di_client_id") if not base.get(k)]
+        if missing:
+            log(f"Für die Garmin-Anmeldung fehlen noch: {', '.join(missing)}. "
+                "Entweder die ganze Datei garmin_tokens.json als GARMIN_TOKENS einfügen "
+                "oder die Secrets GARMIN_DI_TOKEN, GARMIN_DI_REFRESH_TOKEN und GARMIN_DI_CLIENT_ID anlegen.")
+        files["garmin_tokens.json"] = json.dumps(base)
+    if files:
+        tok.mkdir(parents=True, exist_ok=True)
+        for name, content in files.items(): (tok / name).write_text(content, "utf-8")
+        have = sorted(k for k in ("di_token", "di_refresh_token", "di_client_id") if di.get(k) or (k in json.loads(files.get("garmin_tokens.json", "{}") or "{}")))
+        log(f"Tokens übernommen: {', '.join(sorted(files))}" + (f" (Felder: {', '.join(have)})" if have else ""))
     return tok
 
 def login(tok: Path):
