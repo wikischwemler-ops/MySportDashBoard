@@ -69,12 +69,16 @@ def save_state(pw: str):
     log(f"Zwischenspeicher verschlüsselt gesichert ({STATE.stat().st_size // 1024} KB).")
 
 # ---------------------------------------------------------------- Anmeldung
+TOKEN_NAMES = ("garmin_tokens.json", "oauth1_token.json", "oauth2_token.json")
+
 def _token_files(raw: str) -> dict:
     """Erkennt die üblichen Formate für GARMIN_TOKENS und liefert {Dateiname: Inhalt}.
-      a) Ausgabe von tools/garmin_tokens_fuer_github.bat: Base64 von {"oauth1_token.json": "...", "oauth2_token.json": "..."}
+      a) Ausgabe von tools/garmin_tokens_fuer_github.bat: Base64 von {"<datei>.json": "<inhalt>", ...}
       b) dasselbe als reines JSON
-      c) garth/garminconnect-Format: Base64 einer Liste [oauth1, oauth2] (z. B. garth.dumps())
-      d) Inhalt einer einzelnen Token-Datei (oauth1_token.json oder oauth2_token.json)"""
+      c) Inhalt einer einzelnen Token-Datei, roh oder Base64:
+         - neues Format (garminconnect ≥ 0.3): {"di_token", "di_refresh_token", "di_client_id"} → garmin_tokens.json
+         - altes garth-Format: oauth1_token.json / oauth2_token.json
+      d) garth.dumps(): Base64 einer Liste [oauth1, oauth2]"""
     raw = raw.strip().strip('"').strip("'")
     cands = []
     try: cands.append(json.loads(raw))
@@ -87,40 +91,45 @@ def _token_files(raw: str) -> dict:
             continue
     def kind(d):
         if not isinstance(d, dict): return None
+        if "di_token" in d or "di_refresh_token" in d: return "garmin_tokens.json"
         if "oauth_token" in d and "oauth_token_secret" in d: return "oauth1_token.json"
         if "access_token" in d and "refresh_token" in d: return "oauth2_token.json"
         return None
     for c in cands:
-        if isinstance(c, dict) and any(str(k).endswith(".json") for k in c):
-            out = {}
-            for k, v in c.items():
-                v = v if isinstance(v, str) else json.dumps(v)
-                try: name = kind(json.loads(v)) or Path(k).name
-                except Exception: name = Path(k).name
-                out[name] = v
-            return out
+        if isinstance(c, dict) and c and all(str(k).endswith(".json") for k in c):
+            return {Path(str(k)).name: (v if isinstance(v, str) else json.dumps(v)) for k, v in c.items()}
         if isinstance(c, list) and len(c) == 2 and all(isinstance(x, dict) for x in c):
             return {"oauth1_token.json": json.dumps(c[0]), "oauth2_token.json": json.dumps(c[1])}
         if kind(c):
             return {kind(c): json.dumps(c)}
     return {}
 
+def _describe(raw: str) -> str:
+    """Beschreibt den Aufbau des Secrets ohne Werte preiszugeben (für die Fehlersuche)."""
+    raw = raw.strip()
+    for label, txt in (("JSON", raw), ("Base64→JSON", None)):
+        try:
+            if txt is None: txt = base64.b64decode(raw + "==", validate=False).decode("utf-8")
+            d = json.loads(txt)
+            if isinstance(d, dict): return f"{label}-Objekt mit Feldern {sorted(d)[:8]}"
+            return f"{label} vom Typ {type(d).__name__}"
+        except Exception:
+            continue
+    return f"kein JSON/Base64 erkennbar (Länge {len(raw)} Zeichen)"
+
 def prepare_tokens() -> Path:
     tok = WORK / ".garminconnect"
-    if (tok / "oauth1_token.json").exists() and (tok / "oauth2_token.json").exists():
+    if tok.exists() and any(tok.glob("*.json")):
         return tok
     raw = os.environ.get("GARMIN_TOKENS", "")
     if raw.strip():
         files = _token_files(raw)
-        found = sorted(f for f in files if f in ("oauth1_token.json", "oauth2_token.json"))
-        if found:
+        if files:
             tok.mkdir(parents=True, exist_ok=True)
-            for name in found: (tok / name).write_text(files[name], "utf-8")
-            log(f"Tokens aus Secret GARMIN_TOKENS übernommen: {', '.join(found)}")
-            if len(found) == 1:
-                log("Hinweis: Es fehlt eine der beiden Token-Dateien. Bitte das Secret mit tools/garmin_tokens_fuer_github.bat neu erzeugen.")
+            for name, content in files.items(): (tok / name).write_text(content, "utf-8")
+            log(f"Tokens aus Secret GARMIN_TOKENS übernommen: {', '.join(sorted(files))}")
         else:
-            log("GARMIN_TOKENS hat ein unbekanntes Format (erkannt wurden keine oauth1/oauth2-Tokens). "
+            log(f"GARMIN_TOKENS hat ein unbekanntes Format: {_describe(raw)}. "
                 "Bitte den Wert mit tools/garmin_tokens_fuer_github.bat erzeugen und komplett einfügen.")
     return tok
 
@@ -142,7 +151,9 @@ def login(tok: Path):
         g = Garmin(email, pw, prompt_mfa=no_mfa)
         g.login()
         tok.mkdir(parents=True, exist_ok=True)
-        g.garth.dump(str(tok))
+        for dump in (lambda: g.garth.dump(str(tok)), lambda: g.client.dump(str(tok)), lambda: g.dump(str(tok))):
+            try: dump(); break
+            except Exception: continue
         return g
 
 # ---------------------------------------------------------------- Seite bauen
