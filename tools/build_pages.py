@@ -170,6 +170,8 @@ def prepare_tokens() -> Path:
 
 def login(tok: Path):
     try:
+        if not (tok.exists() and any(tok.glob("*.json"))):
+            raise gx.LoginError("keine Tokens vorhanden")
         return gx.login(tok, interactive=False)
     except gx.LoginError as e:
         email, pw = os.environ.get("GARMIN_EMAIL", ""), os.environ.get("GARMIN_PASSWORD", "")
@@ -183,8 +185,19 @@ def login(tok: Path):
         def no_mfa():
             raise SystemExit("Garmin verlangt einen Zwei-Faktor-Code. Im Workflow kann er nicht eingegeben werden.\n"
                              "Bitte das Secret GARMIN_TOKENS mit tools/garmin_tokens_fuer_github.bat erzeugen.")
-        g = Garmin(email, pw, prompt_mfa=no_mfa)
-        g.login()
+        try:
+            g = Garmin(email, pw, prompt_mfa=no_mfa)
+        except TypeError:                                   # ältere/neuere Signatur ohne prompt_mfa
+            g = Garmin(email, pw)
+        try:
+            g.login()
+        except SystemExit:
+            raise
+        except Exception as e:
+            raise SystemExit(f"Garmin-Anmeldung mit E-Mail/Passwort fehlgeschlagen: {e}\n"
+                             "Bitte GARMIN_EMAIL und GARMIN_PASSWORD prüfen. Verlangt Garmin einen Bestätigungscode, "
+                             "geht es nur über GARMIN_TOKENS.")
+        log("Anmeldung mit E-Mail/Passwort erfolgreich.")
         tok.mkdir(parents=True, exist_ok=True)
         for dump in (lambda: g.garth.dump(str(tok)), lambda: g.client.dump(str(tok)), lambda: g.dump(str(tok))):
             try: dump(); break
