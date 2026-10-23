@@ -1,0 +1,94 @@
+name: Garmin Sync
+
+# Holt jede Nacht um 0 Uhr (deutsche Zeit) die Garmin-Daten, verschlüsselt sie
+# und veröffentlicht das Dashboard auf GitHub Pages. Manuell: Actions → Garmin Sync → Run workflow.
+on:
+  schedule:
+    - cron: "7 22 * * *"   # 0:07 Uhr Sommerzeit
+    - cron: "7 23 * * *"   # 0:07 Uhr Winterzeit
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Alles neu laden (Zwischenspeicher ignorieren)"
+        type: boolean
+        default: false
+      max_details:
+        description: "Höchstzahl neuer Aktivitäts-Detailverläufe in diesem Lauf"
+        default: "250"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: garmin-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zeitpunkt prüfen
+        id: gate
+        env:
+          SCHEDULE: ${{ github.event.schedule }}
+        run: python3 tools/schedule_gate.py
+
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+
+      - name: Pakete installieren
+        if: steps.gate.outputs.run == 'true'
+        run: pip install -r requirements.txt cryptography
+
+      - name: Zwischenspeicher laden
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/cache/restore@v4
+        with:
+          path: state.enc
+          key: garmin-state-${{ github.run_id }}
+          restore-keys: garmin-state-
+
+      - name: Garmin-Daten holen und Seite bauen
+        if: steps.gate.outputs.run == 'true'
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+          DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          FULL: ${{ inputs.full && '1' || '0' }}
+          MAX_NEW_DETAILS: ${{ inputs.max_details || '250' }}
+        run: python3 tools/build_pages.py
+
+      - name: Zwischenspeicher sichern
+        if: always() && steps.gate.outputs.run == 'true' && hashFiles('state.enc') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: state.enc
+          key: garmin-state-${{ github.run_id }}
+
+      - name: Seite hochladen
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+
+  deploy:
+    needs: sync
+    if: needs.sync.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
