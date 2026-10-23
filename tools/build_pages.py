@@ -69,20 +69,59 @@ def save_state(pw: str):
     log(f"Zwischenspeicher verschlüsselt gesichert ({STATE.stat().st_size // 1024} KB).")
 
 # ---------------------------------------------------------------- Anmeldung
+def _token_files(raw: str) -> dict:
+    """Erkennt die üblichen Formate für GARMIN_TOKENS und liefert {Dateiname: Inhalt}.
+      a) Ausgabe von tools/garmin_tokens_fuer_github.bat: Base64 von {"oauth1_token.json": "...", "oauth2_token.json": "..."}
+      b) dasselbe als reines JSON
+      c) garth/garminconnect-Format: Base64 einer Liste [oauth1, oauth2] (z. B. garth.dumps())
+      d) Inhalt einer einzelnen Token-Datei (oauth1_token.json oder oauth2_token.json)"""
+    raw = raw.strip().strip('"').strip("'")
+    cands = []
+    try: cands.append(json.loads(raw))
+    except Exception: pass
+    for pad in ("", "=", "=="):
+        try:
+            cands.append(json.loads(base64.b64decode(raw + pad, validate=False).decode("utf-8")))
+            break
+        except Exception:
+            continue
+    def kind(d):
+        if not isinstance(d, dict): return None
+        if "oauth_token" in d and "oauth_token_secret" in d: return "oauth1_token.json"
+        if "access_token" in d and "refresh_token" in d: return "oauth2_token.json"
+        return None
+    for c in cands:
+        if isinstance(c, dict) and any(str(k).endswith(".json") for k in c):
+            out = {}
+            for k, v in c.items():
+                v = v if isinstance(v, str) else json.dumps(v)
+                try: name = kind(json.loads(v)) or Path(k).name
+                except Exception: name = Path(k).name
+                out[name] = v
+            return out
+        if isinstance(c, list) and len(c) == 2 and all(isinstance(x, dict) for x in c):
+            return {"oauth1_token.json": json.dumps(c[0]), "oauth2_token.json": json.dumps(c[1])}
+        if kind(c):
+            return {kind(c): json.dumps(c)}
+    return {}
+
 def prepare_tokens() -> Path:
     tok = WORK / ".garminconnect"
-    if tok.exists() and any(tok.glob("*.json")):
+    if (tok / "oauth1_token.json").exists() and (tok / "oauth2_token.json").exists():
         return tok
-    raw = os.environ.get("GARMIN_TOKENS", "").strip()
-    if raw:
-        try:
-            files = json.loads(base64.b64decode(raw).decode("utf-8"))
+    raw = os.environ.get("GARMIN_TOKENS", "")
+    if raw.strip():
+        files = _token_files(raw)
+        found = sorted(f for f in files if f in ("oauth1_token.json", "oauth2_token.json"))
+        if found:
             tok.mkdir(parents=True, exist_ok=True)
-            for name, content in files.items():
-                (tok / Path(name).name).write_text(content if isinstance(content, str) else json.dumps(content), "utf-8")
-            log("Tokens aus Secret GARMIN_TOKENS übernommen.")
-        except Exception as e:
-            log(f"GARMIN_TOKENS konnte nicht gelesen werden: {e}")
+            for name in found: (tok / name).write_text(files[name], "utf-8")
+            log(f"Tokens aus Secret GARMIN_TOKENS übernommen: {', '.join(found)}")
+            if len(found) == 1:
+                log("Hinweis: Es fehlt eine der beiden Token-Dateien. Bitte das Secret mit tools/garmin_tokens_fuer_github.bat neu erzeugen.")
+        else:
+            log("GARMIN_TOKENS hat ein unbekanntes Format (erkannt wurden keine oauth1/oauth2-Tokens). "
+                "Bitte den Wert mit tools/garmin_tokens_fuer_github.bat erzeugen und komplett einfügen.")
     return tok
 
 def login(tok: Path):
@@ -91,7 +130,10 @@ def login(tok: Path):
     except gx.LoginError as e:
         email, pw = os.environ.get("GARMIN_EMAIL", ""), os.environ.get("GARMIN_PASSWORD", "")
         if not (email and pw):
-            raise SystemExit(f"Garmin-Anmeldung fehlgeschlagen: {e}\nSecrets GARMIN_TOKENS oder GARMIN_EMAIL/GARMIN_PASSWORD fehlen.")
+            raise SystemExit("Garmin-Anmeldung fehlgeschlagen: Die Tokens aus GARMIN_TOKENS sind ungültig oder unvollständig, "
+                             "und GARMIN_EMAIL/GARMIN_PASSWORD sind nicht gesetzt.\n"
+                             "Lösung: tools/garmin_tokens_fuer_github.bat ausführen und den Text als GARMIN_TOKENS neu einfügen "
+                             "oder GARMIN_EMAIL und GARMIN_PASSWORD als Secrets anlegen.")
         log("Anmeldung mit GARMIN_EMAIL/GARMIN_PASSWORD …")
         from garminconnect import Garmin
         def no_mfa():
