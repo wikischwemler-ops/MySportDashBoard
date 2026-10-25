@@ -143,6 +143,28 @@ code{font-family:var(--f-mono);font-size:12px;background:var(--soft);padding:1px
 .agenda .day>div{font-size:12px;color:var(--muted)}
 .agenda .act{min-height:44px;font-size:13px;padding:6px 10px}
 @media (max-width:760px){.cal{display:none}.agenda{display:flex}}
+/* Jahres-Heatmap: ein Kästchen je Tag, Farbe nach Trainingsstunden */
+.hmscroll{overflow-x:auto;scrollbar-width:thin;padding-bottom:4px}
+.hmrow{display:grid;grid-template-columns:24px minmax(640px,1100px);column-gap:4px;margin-bottom:14px}
+.hmrow h3{grid-column:1/-1;margin:0 0 4px;font:600 14px var(--f-display);display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline}
+.hmrow h3 span{font:400 12px var(--f-body);color:var(--muted);font-variant-numeric:tabular-nums}
+.hmwd,.hmbody{display:grid;grid-template-rows:16px auto}
+.hmwd>div{display:grid;grid-template-rows:repeat(7,1fr);row-gap:3px;font:10px var(--f-mono);color:var(--muted);align-items:center}
+.hmmon{display:grid;grid-template-columns:repeat(54,1fr);font:10.5px var(--f-body);color:var(--muted);white-space:nowrap}
+.hmgrid{display:grid;grid-template-columns:repeat(54,1fr);grid-template-rows:repeat(7,auto);grid-auto-flow:column;gap:3px}
+.hmgrid>*{aspect-ratio:1;border-radius:2px;background:var(--soft);min-width:0}
+.hmgrid .x{visibility:hidden}
+.hmgrid button{all:unset;box-sizing:border-box;aspect-ratio:1;border-radius:2px;cursor:pointer}
+.hmgrid .l1,.hmleg .l1{background:color-mix(in srgb,var(--c) 30%,var(--soft))}
+.hmgrid .l2,.hmleg .l2{background:color-mix(in srgb,var(--c) 55%,var(--soft))}
+.hmgrid .l3,.hmleg .l3{background:color-mix(in srgb,var(--c) 80%,var(--soft))}
+.hmgrid .l4,.hmleg .l4{background:var(--c)}
+.hmgrid button:hover{outline:1px solid var(--ink)}
+.hmgrid button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.hmgrid .td{outline:1px solid var(--muted)}
+.hmgrid .sel{outline:2px solid var(--ink);outline-offset:1px}
+.hmleg{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:12px;color:var(--muted)}
+.hmleg i{display:inline-block;width:11px;height:11px;border-radius:2px;background:var(--soft);vertical-align:-1px;margin-right:3px}
 .dhead{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;justify-content:space-between}
 .dhead h2{font-family:var(--f-display);font-weight:600;font-size:24px;margin:0;text-wrap:balance}
 .spbadge{font:500 11px var(--f-body);text-transform:uppercase;letter-spacing:.07em;padding:3px 8px;border-radius:4px;background:color-mix(in srgb,var(--c) 16%,transparent);color:var(--c)}
@@ -482,9 +504,55 @@ function renderActs(view){
   if(!A.length){view.append(h(`<div class="msg">Noch keine activities.json gefunden. Im Programm einmal „Jetzt aktualisieren“ ausführen. Die Einzelaktivitäten stehen getrennt von data.json in activities.json.</div>`));return;}
   if(!ACT.month)ACT.month=A[A.length-1].d.slice(0,7);
   if(ACT.sel==null)ACT.sel=A[A.length-1].id;
+  view.append(h(`<section class="panel" id="heatp"></section>`));
   view.append(h(`<section class="panel" id="calp"></section>`));
   view.append(h(`<section class="panel" id="detp"></section>`));
-  drawCalendar();drawDetail();
+  drawHeat();drawCalendar();drawDetail();
+}
+// Jahres-Heatmap wie bei GitHub: letzte 12 Monate, ein Jahr oder alle Jahre untereinander
+const HM_LV=[[0.75,"unter ¾ h"],[1.5,"unter 1½ h"],[3,"unter 3 h"],[Infinity,"ab 3 h"]];
+function drawHeat(){
+  const A=DATA.activities,box=document.getElementById("heatp");if(!box)return;
+  const vis=A.filter(a=>ACT.filter==="all"||a.sp===ACT.filter);
+  const byDay={};vis.forEach(a=>{const o=byDay[a.d]||(byDay[a.d]={n:0,h:0,km:0,first:a.id});o.n++;o.h+=a.dur/3600;o.km+=a.km;});
+  const y0=+A[0].d.slice(0,4),y1=+A[A.length-1].d.slice(0,4),years=[];for(let y=y1;y>=y0;y--)years.push(y);
+  let r=UI.hr||"12m";if(r!=="12m"&&r!=="all"&&!years.includes(+r))r="12m";
+  const U=(y,m,d)=>new Date(Date.UTC(y,m,d)),iso=d=>d.toISOString().slice(0,10);
+  const now=new Date(),tk=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`,te=U(now.getFullYear(),now.getMonth(),now.getDate());
+  const rows=r==="12m"?[[null,U(te.getUTCFullYear()-1,te.getUTCMonth(),te.getUTCDate()+1),te]]
+    :(r==="all"?years:[+r]).map(y=>[y,U(y,0,1),U(y,11,31)]);
+  const selD=(A.find(a=>a.id===ACT.sel)||{}).d;
+  const c=ACT.filter==="all"?"--good":SP[ACT.filter].v;
+  const lv=h=>HM_LV.findIndex(([t])=>h<t)+1;
+  const stats=(s,e)=>{let n=0,hs=0,days=0,run=0,best=0;
+    for(let d=new Date(s);d<=e&&iso(d)<=tk;d.setUTCDate(d.getUTCDate()+1)){const o=byDay[iso(d)];if(o){n+=o.n;hs+=o.h;days++;run++;best=Math.max(best,run);}else run=0;}
+    return{n,hs,days,best};};
+  const row=([y,s,e])=>{
+    const mon=U(s.getUTCFullYear(),s.getUTCMonth(),s.getUTCDate()-(s.getUTCDay()+6)%7);
+    let cells="",labels="",col=0,lastM=-1;
+    for(let d=new Date(mon);d<=e||(d.getUTCDay()+6)%7;d.setUTCDate(d.getUTCDate()+1)){
+      const k=iso(d),wd=(d.getUTCDay()+6)%7;if(wd===0)col++;
+      if(d>=s&&d<=e&&d.getUTCMonth()!==lastM&&(d.getUTCDate()===1||(+d===+s&&s.getUTCDate()<=14))){lastM=d.getUTCMonth();if(col<=51)labels+=`<span style="grid-column:${col}/span 4">${MONTHS_L[lastM].slice(0,3)}</span>`;}
+      if(d<s||d>e||k>tk){cells+=`<span class="x"></span>`;continue;}
+      const o=byDay[k],cls=(k===tk?" td":"")+(k===selD?" sel":"");
+      const dl=d.toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"short",year:"numeric",timeZone:"UTC"});
+      cells+=o?`<button class="l${lv(o.h)}${cls}" data-d="${k}" title="${dl} · ${o.n} ${o.n>1?"Aktivitäten":"Aktivität"} · ${nf(o.h,1)} h${o.km>=0.1?" · "+nf(o.km,1)+" km":""}"></button>`
+              :`<span class="${cls.trim()}" title="${dl} · keine Aktivität"></span>`;}
+    const st=stats(s,e);
+    return `<div class="hmrow"><h3>${y??"Letzte 12 Monate"}<span>${st.n} Aktivitäten · ${nf(st.hs,0)} h · ${st.days} aktive Tage · längste Serie ${st.best} ${st.best===1?"Tag":"Tage"}</span></h3>
+      <div class="hmwd"><span></span><div>${WD.map((w,i)=>`<span>${i%2?"":w}</span>`).join("")}</div></div>
+      <div class="hmbody"><div class="hmmon">${labels}</div><div class="hmgrid">${cells}</div></div></div>`;};
+  const opts=[["12m","12 Monate"],...years.map(y=>[String(y),String(y)]),["all","Alle"]];
+  box.style.setProperty("--c",`var(${c})`);
+  box.innerHTML=`<div class="calhead"><div class="calnav"><h2 style="min-width:0;text-align:left">Trainingstage</h2></div>
+      <div class="seg" role="group" aria-label="Zeitraum">${opts.map(([k,l])=>`<button data-hr="${k}" aria-pressed="${k===r}">${l}</button>`).join("")}</div></div>
+    <div class="hmscroll">${rows.map(row).join("")}</div>
+    <div class="hmleg"><span>Stunden pro Tag${ACT.filter==="all"?"":" ("+SP[ACT.filter].l+")"}:</span><span><i></i>keine</span>${HM_LV.map(([,l],i)=>`<span><i class="l${i+1}"></i>${l}</span>`).join("")}<span>· Klick auf einen Tag öffnet ihn im Kalender</span></div>`;
+  if(r==="12m"){const sc=box.querySelector(".hmscroll");sc.scrollLeft=sc.scrollWidth;}
+  box.querySelectorAll(".seg button").forEach(b=>b.onclick=()=>{UI.hr=b.dataset.hr;saveUI();drawHeat();});
+  box.querySelectorAll(".hmgrid button").forEach(b=>b.onclick=()=>{const o=byDay[b.dataset.d];
+    ACT.month=b.dataset.d.slice(0,7);ACT.sel=o.first;ACT.zoom=null;drawHeat();drawCalendar();drawDetail();
+    document.getElementById("calp").scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});});
 }
 function drawCalendar(){
   const A=DATA.activities,box=document.getElementById("calp");if(!box)return;
@@ -518,8 +586,8 @@ function drawCalendar(){
   const step=d=>{const t=new Date(Date.UTC(y,m-1+d,1));ACT.month=t.toISOString().slice(0,7);drawCalendar();};
   box.querySelector("#cprev").onclick=()=>step(-1);box.querySelector("#cnext").onclick=()=>step(1);
   box.querySelector("#clast").onclick=()=>{ACT.month=maxM;drawCalendar();};
-  box.querySelectorAll(".chip").forEach(b=>b.onclick=()=>{ACT.filter=b.dataset.f;drawCalendar();});
-  box.querySelectorAll(".act").forEach(b=>b.onclick=()=>{ACT.sel=+b.dataset.id;ACT.zoom=null;drawCalendar();drawDetail();
+  box.querySelectorAll(".chip").forEach(b=>b.onclick=()=>{ACT.filter=b.dataset.f;drawHeat();drawCalendar();});
+  box.querySelectorAll(".act").forEach(b=>b.onclick=()=>{ACT.sel=+b.dataset.id;ACT.zoom=null;drawHeat();drawCalendar();drawDetail();
     document.getElementById("detp").scrollIntoView({behavior:matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth",block:"start"});});
 }
 
