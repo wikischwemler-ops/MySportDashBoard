@@ -415,6 +415,7 @@ function renderGroup(view,g){
   const kp=ids.filter(i=>DATA.series[i].fmt!=="status"&&(["sum","last"].includes(DATA.series[i].agg)||/pace|speed|pwr|hrv|rhr/.test(i))).slice(0,6);
   view.append(h(`<div class="kpis">${kp.map(i=>kpi(i)).join("")}</div>`));
   if(g.id==="fit")renderLoadStatus(view);
+  if(g.id==="health"&&DATA.series["health.weight"])renderBody(view);
   const s=DATA.series[sel[g.id]];
   const p=h(`<section class="panel" style="--c:${col(g.id)}"><div class="ph"><h2>${s.label} <span style="color:var(--muted);font-weight:500">${unitOf(s)}</span></h2>
     <div class="opts">${bigBtn("series:"+sel[g.id])}<span class="hint">Strg + Mausrad zoomt · danach mit der Hand verschieben · Doppelklick zeigt alles</span><label><input type="checkbox" id="ma-${g.id}" ${optMA[g.id]?"checked":""}> gleitender Durchschnitt</label><label><input type="checkbox" id="tr-${g.id}" ${optTrend[g.id]?"checked":""}> Trendlinie</label></div></div>
@@ -429,6 +430,35 @@ function renderGroup(view,g){
   for(const i of ids){const t=DATA.series[i];const v=aggr(t,startTs(),END);
     const b=h(`<button class="mini" style="--c:${col(g.id)}" aria-pressed="${i===sel[g.id]}"><div class="top"><span class="l">${t.label}</span><span class="v">${fmt(t,v)} <small style="font:11px var(--f-body);color:var(--muted)">${unitOf(t)}</small></span></div><canvas></canvas></button>`);
     b.onclick=()=>{sel[g.id]=i;render();scrollTo({top:0,behavior:"smooth"});};box.append(b);spark(b.querySelector("canvas"),t);}
+}
+
+// ---- Gewicht mit überlagerter Körperzusammensetzung (jede Kurve auf eigener Skala) ----
+const BODY=[["health.fat","--run"],["health.fatkg","--fit"],["health.lean","--all"],["health.muscle","--bike"],["health.bone","--other"],["health.water","--swim"]];
+const bodyOpt={on:["health.fat","health.muscle"],smooth:true};
+function renderBody(view){
+  const av=BODY.filter(([id])=>DATA.series[id]);
+  const p=h(`<section class="panel"><div class="ph"><h2>Gewicht &amp; Körperzusammensetzung</h2>
+    <div class="opts"><label><input type="checkbox" id="body-sm" ${bodyOpt.smooth?"checked":""}> geglättet (Ø 4 Wochen)</label></div></div>
+    <div class="chips" style="margin-bottom:6px">${av.map(([id,v])=>`<button class="chip" data-id="${id}" style="--c:var(${v})" aria-pressed="${bodyOpt.on.includes(id)}">${DATA.series[id].label}</button>`).join("")}</div>
+    <div class="hint" style="margin-bottom:10px">Gewicht links in kg, jede zugeschaltete Kurve hat ihre eigene Skala (die erste rechts). Die genauen Werte zeigt der Tooltip.</div>
+    <div class="chartbox"><canvas></canvas></div></section>`);
+  view.append(p);bodyChart(p.querySelector("canvas"),av);
+  p.querySelectorAll(".chip").forEach(b=>b.onclick=()=>{const id=b.dataset.id;bodyOpt.on=bodyOpt.on.includes(id)?bodyOpt.on.filter(x=>x!==id):[...bodyOpt.on,id];render();});
+  p.querySelector("#body-sm").onchange=e=>{bodyOpt.smooth=e.target.checked;render();};
+}
+function bodyChart(canvas,av){
+  const o=baseOpts();o.plugins.legend={display:true,position:"bottom",labels:{boxWidth:14,boxHeight:3}};
+  o.plugins.tooltip.mode="nearest";o.plugins.tooltip.axis="x";o.plugins.tooltip.intersect=false;
+  const sm=p=>bodyOpt.smooth?movAvg(p,4):p;
+  const w=DATA.series["health.weight"],ink=css("--ink");
+  o.scales.y=yAxis(w,{title:{display:true,text:"Gewicht (kg)"}});
+  const ds=[{...lineDs(w,sm(pts(w)),ink,{fill:false,pointRadius:0,lbl:"Gewicht"}),label:"Gewicht",borderWidth:3,order:0}];
+  let n=0;
+  av.filter(([id])=>bodyOpt.on.includes(id)).forEach(([id,v])=>{const s=DATA.series[id],c=css(v),yid="b"+n;
+    o.scales[yid]=yAxis(s,{position:"right",display:n===0,grid:{drawOnChartArea:false},ticks:{color:c,maxTicksLimit:6,callback:x=>fmt(s,x)},
+      title:{display:true,text:s.label+(unitOf(s)?" ("+unitOf(s)+")":""),color:c}});
+    ds.push({...lineDs(s,sm(pts(s)),c,{fill:false,pointRadius:0}),label:s.label+(unitOf(s)?" ("+unitOf(s)+")":""),yAxisID:yid,order:1});n++;});
+  charts.push(new Chart(canvas,{type:"line",data:{datasets:ds},options:o}));
 }
 
 function renderExplorer(view){
