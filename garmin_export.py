@@ -144,17 +144,22 @@ def fetch_activities(g, start, end, full):
         log("Ältere Aktivitätsdaten ohne Namen gefunden – lade alle Aktivitäten einmal neu.")
         acts = {}
     have_until = max((v["d"] for v in acts.values()), default=None)
+    have_from = min((v["d"] for v in acts.values()), default=None)
     fetch_from = start if (full or not have_until) else max(start, dt.date.fromisoformat(have_until) - dt.timedelta(days=30))
-    log(f"Aktivitäten ab {fetch_from} …")
-    chunk_start = fetch_from
-    while chunk_start <= end:
-        chunk_end = min(end, chunk_start + dt.timedelta(days=180))
-        r = call(g.get_activities_by_date, chunk_start.isoformat(), chunk_end.isoformat()) or []
-        for a in r:
-            rec = slim_activity(a)
-            if rec: acts[str(a.get("activityId"))] = rec
-        log(f"  {chunk_start} – {chunk_end}: {len(r)}")
-        chunk_start = chunk_end + dt.timedelta(days=1)
+    spans = [(fetch_from, end)]
+    if have_from and fetch_from > start and have_from > start.isoformat():   # Zeitraum wurde nach vorne erweitert
+        spans.insert(0, (start, dt.date.fromisoformat(have_from)))
+    for span_start, span_end in spans:
+        log(f"Aktivitäten {span_start} bis {span_end} …")
+        chunk_start = span_start
+        while chunk_start <= span_end:
+            chunk_end = min(span_end, chunk_start + dt.timedelta(days=180))
+            r = call(g.get_activities_by_date, chunk_start.isoformat(), chunk_end.isoformat()) or []
+            for a in r:
+                rec = slim_activity(a)
+                if rec: acts[str(a.get("activityId"))] = rec
+            log(f"  {chunk_start} – {chunk_end}: {len(r)}")
+            chunk_start = chunk_end + dt.timedelta(days=1)
     c.d = acts; c.dirty = 1; c.save()
     return [a for a in acts.values() if a["d"] >= start.isoformat()]
 
@@ -600,6 +605,8 @@ def run_export(tokens=None, years=4.0, out=None, full=False, no_health=False, in
     CACHE = out / "cache"
     end = dt.date.today()
     start = (end - dt.timedelta(days=int(years * 365.25))).replace(day=1)
+    if load_config().get("start"):                 # festes Startdatum (z. B. erste Garmin-Aufzeichnung) hat Vorrang vor "years"
+        start = dt.date.fromisoformat(load_config()["start"])
     tok = resolve_tokens(tokens)
     log(f"Zeitraum {start} bis {end} · Tokens: {tok}")
     g = login(tok, interactive)

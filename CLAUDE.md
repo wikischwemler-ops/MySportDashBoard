@@ -4,7 +4,7 @@ Sprache: Deutsch. Stand: 25.10.2026.
 
 ## Ziel
 
-Dashboard für Garmin-Connect-Daten der letzten 4 Jahre (Laufen, Rad, Schwimmen, Sonstiges, Fitness & Last, Gesundheit, Prognosen, Einzelaktivitäten mit Verläufen). Eine **feste HTML-Hülle** (`index.html`) liest die Daten aus JSON. Bei Updates ändern sich nur die Daten, nicht das HTML.
+Dashboard für alle Garmin-Connect-Daten seit der ersten Aufzeichnung (Lauf am 26.06.2022; Rad ab 22.09.2022, Schwimmen ab 20.07.2024; Tageswerte wie Schritte/Ruhepuls ab 20.08.2022) (Laufen, Rad, Schwimmen, Sonstiges, Fitness & Last, Gesundheit, Prognosen, Einzelaktivitäten mit Verläufen). Eine **feste HTML-Hülle** (`index.html`) liest die Daten aus JSON. Bei Updates ändern sich nur die Daten, nicht das HTML.
 
 ## Architektur
 
@@ -16,7 +16,7 @@ Dashboard für Garmin-Connect-Daten der letzten 4 Jahre (Laufen, Rad, Schwimmen,
 | Pages-Build | `tools/build_pages.py` | Im Workflow: Export, bis zu `MAX_NEW_DETAILS` (250) Detailverläufe pro Lauf (neueste zuerst), AES-256-GCM mit PBKDF2 (250.000 Runden) aus `DASHBOARD_PASSWORD`, schreibt `site/` (`index.html`, `data.enc`, `activities.enc`, `details/*.enc`, `site.json`). Zwischenspeicher `state.enc` über `actions/cache`. |
 | Workflow | `.github/workflows/garmin-sync.yml` (Vorlage: `tools/garmin-sync.yml`) | Nachts 0:07 Uhr deutsche Zeit (Cron 22:07 und 23:07 UTC, `tools/schedule_gate.py` wählt je nach Sommer-/Winterzeit), manuell mit `full` und `max_details`. Secrets: `DASHBOARD_PASSWORD` (Pflicht), `GARMIN_TOKENS` (empfohlen, bei 2FA nötig; erzeugen mit `tools/garmin_tokens_fuer_github.bat`; altes und neues Format `garmin_tokens.json`) oder einzeln `GARMIN_DI_TOKEN`, `GARMIN_DI_REFRESH_TOKEN`, `GARMIN_DI_CLIENT_ID`, optional `GARMIN_EMAIL`/`GARMIN_PASSWORD`. |
 | Windows-Helfer | `Dashboard_starten.bat`, `Nur_aktualisieren.bat`, `Taeglich_automatisch.bat` (Aufgabe 06:40), `EXE_bauen.bat` (PyInstaller), `_umgebung.bat` (sucht py/python/uv) | |
-| Konfiguration | `config.json` | `tokens`, `years`, `refresh_hours`, `port`, `open_browser` |
+| Konfiguration | `config.json` | `tokens`, `start` (festes Startdatum, hat Vorrang vor `years`; aktuell 2022-06-01), `years`, `refresh_hours`, `port`, `open_browser`, `bodycomp_exclude` |
 
 Aufrufe: `python garmin_export.py [--years 4] [--tokens PFAD] [--full]`, `python garmin_dashboard.py [--update-only [--full]]`. Abhängigkeit: `garminconnect>=0.2.25` (Workflow zusätzlich `cryptography`).
 

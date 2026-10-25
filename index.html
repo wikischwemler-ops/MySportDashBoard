@@ -209,7 +209,7 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
     </div>
     <div class="controls">
       <div class="seg" role="group" aria-label="Zeitraum" id="range">
-        <button data-m="3">3 M</button><button data-m="6">6 M</button><button data-m="12">1 J</button><button data-m="24">2 J</button><button data-m="48" aria-pressed="true">4 J</button>
+        <button data-m="3">3 M</button><button data-m="6">6 M</button><button data-m="12">1 J</button><button data-m="24">2 J</button><button data-m="48">4 J</button><button data-m="0" aria-pressed="true">Alle</button>
       </div>
       <button class="btn" id="upd" hidden>Jetzt aktualisieren</button>
       <button class="btn" id="logout" hidden>Sperren</button>
@@ -248,11 +248,11 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 const COLORS={all:"--all",run:"--run",bike:"--bike",swim:"--swim",other:"--other",fit:"--fit",health:"--health",pred:"--pred"};
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const col=g=>css(COLORS[g]||"--accent");
-let DATA=null, RANGE=48, TAB="overview", charts=[];
+let DATA=null, RANGE=0, TAB="overview", charts=[];   // RANGE in Monaten, 0 = alle Daten
 const sel={}; // gewählte Kennlinie je Reiter
 const optMA={}, optTrend={};
 const exp={a:"run.km",b:"fit.vo2run",c:"",norm:false};
-try{const s=JSON.parse(localStorage.getItem("gd-ui")||"{}");if(s.range)RANGE=s.range;if(s.tab)TAB=s.tab;}catch(e){}
+try{const s=JSON.parse(localStorage.getItem("gd-ui")||"{}");if(s.range!=null)RANGE=s.range;if(s.tab)TAB=s.tab;}catch(e){}
 const save=()=>{try{localStorage.setItem("gd-ui",JSON.stringify({range:RANGE,tab:TAB}))}catch(e){}};
 
 // ---------- Formatierung ----------
@@ -275,7 +275,8 @@ const tsLabel=(t,long)=>{const d=new Date(t);return (long?d.getUTCDate()+". ":""
 // ---------- Zeitraum ----------
 function endTs(){let m=0;for(const s of Object.values(DATA.series))for(const p of s.d){const t=toTs(p[0]);if(t>m)m=t;}return m;}
 let END=0;
-const startTs=(months=RANGE,end=END)=>{const d=new Date(end);d.setUTCMonth(d.getUTCMonth()-months);return d.getTime();};
+const firstTs=()=>{const m=(DATA.meta||{}).from;return m?toTs(m.slice(0,7)+"-01"):Math.min(...Object.values(DATA.series).flatMap(s=>s.d.map(p=>toTs(p[0]))));};
+const startTs=(months=RANGE,end=END)=>{if(!months){const f=firstTs();return end===END?f:f-(END-f);}const d=new Date(end);d.setUTCMonth(d.getUTCMonth()-months);return d.getTime();};
 const pts=(s,a=startTs(),b=END)=>s.d.map(p=>({x:toTs(p[0]),y:p[1]})).filter(p=>p.x>a&&p.x<=b&&p.y!=null);
 function aggr(s,a,b){const p=pts(s,a,b).map(q=>q.y);if(!p.length)return null;
   switch(s.agg){case"sum":return p.reduce((x,y)=>x+y,0);case"max":return Math.max(...p);case"last":return p[p.length-1];default:return p.reduce((x,y)=>x+y,0)/p.length;}}
@@ -506,7 +507,7 @@ function drawBig(){if(!BIG||!DATA)return;bigCharts.forEach(c=>c.destroy());bigCh
   bigCharts=charts;charts=saved;bigCharts.forEach(wheelZoom);
   document.getElementById("bigt").innerHTML=`${title}<span class="note">${note}</span>`;
   const op=document.getElementById("bigopts");
-  op.innerHTML=`<div class="seg" role="group" aria-label="Zeitraum">${[[3,"3 M"],[6,"6 M"],[12,"1 J"],[24,"2 J"],[48,"4 J"]].map(([m,l])=>`<button data-bm="${m}" aria-pressed="${RANGE===m}">${l}</button>`).join("")}</div>`+
+  op.innerHTML=`<div class="seg" role="group" aria-label="Zeitraum">${[[3,"3 M"],[6,"6 M"],[12,"1 J"],[24,"2 J"],[48,"4 J"],[0,"Alle"]].map(([m,l])=>`<button data-bm="${m}" aria-pressed="${RANGE===m}">${l}</button>`).join("")}</div>`+
     (ser?`<label><input type="checkbox" id="big-ma" ${BIGO.ma?"checked":""}> gleitender Durchschnitt</label><label><input type="checkbox" id="big-tr" ${BIGO.tr?"checked":""}> Trendlinie</label>`:"");
   op.querySelectorAll("[data-bm]").forEach(b=>b.onclick=()=>{RANGE=+b.dataset.bm;save();render();});
   if(ser){op.querySelector("#big-ma").onchange=e=>{BIGO.ma=e.target.checked;drawBig();};op.querySelector("#big-tr").onchange=e=>{BIGO.tr=e.target.checked;drawBig();};}
