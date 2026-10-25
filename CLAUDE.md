@@ -30,7 +30,7 @@ Nie ins Repository (steht in `.gitignore`): `.garminconnect/`, `cache/`, `data.*
 - `extra {loadfocus, status}`: Wochenwerte für Load-Fokus und Trainingsstatus.
 - `activities.json`: `{generated_at, activities: [{id, d, time, sp, t, name, km, dur, elev, hr, maxhr, pwr, cal, te, race}]}`.
 
-Vorhandene Kennlinien in `fit`: VO2max Laufen/Rad, Fitnessalter, Ausdauerwert, Hill Score, ATL, CTL, ACWR, Load-Fokus (3), Trainingsstatus, Intensitätsminuten, Laktatschwelle HF/Pace/Leistung. In `health`: Ruhepuls, HRV, Schlafdauer, Schlafwert, Stress, Body Battery, Atemfrequenz, SpO₂, Schritte, Gewicht, Körperfett. In `pred`: Prognosen 5 km, 10 km, HM, Marathon.
+Vorhandene Kennlinien in `fit`: VO2max Laufen/Rad, Fitnessalter, Ausdauerwert, Hill Score, ATL, CTL, ACWR, Load-Fokus (3), Trainingsstatus, Intensitätsminuten, Laktatschwelle HF/Pace/Leistung. In `health`: Ruhepuls, HRV, Schlafdauer, Schlafwert, Stress, Body Battery, Atemfrequenz, SpO₂, Schritte, Gewicht, Körperfett, Fettmasse, fettfreie Masse, Skelettmuskelmasse, Knochenmasse, Körperwasser, BMI (Index-Waage, Zusammensetzung erst ab Dez. 2024, Gewicht vorher nur 4 manuelle Einträge 2024). In `pred`: Prognosen 5 km, 10 km, HM, Marathon.
 
 Sportzuordnung über `RUN`, `BIKE`, `SWIM` in `garmin_export.py`, alles andere ist „Sonstige“. Ändert sich der Inhalt der Detailverläufe, `DETAIL_VERSION` erhöhen (alte Cache-Dateien werden dann neu geladen).
 
@@ -40,6 +40,7 @@ Sportzuordnung über `RUN`, `BIKE`, `SWIM` in `garmin_export.py`, alles andere i
 - Der erste Lauf über 4 Jahre dauert 20 bis 60 Minuten (Gesundheitswerte nur tageweise). `PAUSE = 0.25 s` zwischen Aufrufen schont das Rate-Limit.
 - Rad-Duplikate (gleiche Fahrt als „Cycling“ und „Road Cycling“) können die Radkilometer erhöhen.
 - Schlafdaten sind lückenhaft, HRV und Ruhepuls daher mit Vorsicht deuten.
+- Körperzusammensetzung (`get_body_composition`): `CHANGE_LOG`/`USER_SETTING` sind Profilangaben, keine Wiegungen (z. B. 31,8 oder 38 kg). 17.03. bis 17.06.2025 springen Fett, Muskel und Knochen bei gleichem Gewicht (falsche Waagen-/Profileinstellung, zeitgleich mit dem VO2max-Ausreißer); ausgeschlossen über `config.json` → `bodycomp_exclude`. Einzelne Fehlmessungen (Körperfett > 4 Prozentpunkte vom Fenster-Median) verwirft der Export.
 - Garmin-MCP in Claude Code (`mcp__garmin__*`): `get_progress_summary_between_dates` mit `metric: distance` liefert **Zentimeter** (÷ 100000 = km). Bei „Garmin login failed“ neu authentifizieren (`garmin-mcp-auth`) und Server neu starten.
 - Garmin blockiert eventuell Anfragen aus GitHub-Rechenzentren; dann scheitert der Workflow beim Login, lokal läuft alles weiter.
 

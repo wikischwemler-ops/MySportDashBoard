@@ -247,17 +247,35 @@ def fetch_weekly(g, start, end, full):
     c.save()
     return c.d
 
+RANGE_KEYS = ("weight", "fat", "bmi", "fatkg", "lean", "muscle", "bone", "water", "endur", "hill", "pred", "lthr", "ltpace", "ltpwr")
 def fetch_ranges(g, start, end):
     """Bereichsabfragen: Gewicht, Ausdauerwert, Hill Score, Prognosen, Laktatschwelle."""
-    out = {"weight": {}, "fat": {}, "endur": {}, "hill": {}, "pred": {}, "lthr": {}, "ltpace": {}, "ltpwr": {}}
+    out = {k: {} for k in RANGE_KEYS}
+    # Zeiträume mit falschen Waagen-/Profileinstellungen (config.json "bodycomp_exclude": [["von", "bis"], …]):
+    # Gewicht bleibt, Körperzusammensetzung wird verworfen
+    excl = load_config().get("bodycomp_exclude") or []
     for a in days(start, end, 120):
         b = min(end, a + dt.timedelta(days=119))
         A, B = a.isoformat(), b.isoformat()
         bc = call(g.get_body_composition, A, B) or {}
-        for w in bc.get("dateWeightList") or []:
+        # CHANGE_LOG und USER_SETTING sind Profilangaben, keine Wiegungen
+        L = [w for w in bc.get("dateWeightList") or [] if w.get("sourceType") not in ("CHANGE_LOG", "USER_SETTING")]
+        ok = [w for w in L if w.get("bodyFat") and not any(x <= (w.get("calendarDate") or "") <= y for x, y in excl)]
+        # Einzelne Fehlmessungen (z. B. nasse Füße): Körperfett weit weg vom Median des Fensters → Zusammensetzung verwerfen
+        fats = sorted(w["bodyFat"] for w in ok)
+        med = fats[len(fats) // 2] if fats else None
+        for w in L:
             d = w.get("calendarDate") or ""
             if w.get("weight"): out["weight"][d] = w["weight"] / 1000
-            if w.get("bodyFat"): out["fat"][d] = w["bodyFat"]
+            if w.get("bmi"): out["bmi"][d] = w["bmi"]
+            if w not in ok or abs(w["bodyFat"] - med) > 4: continue
+            out["fat"][d] = w["bodyFat"]
+            if w.get("weight"):
+                out["fatkg"][d] = w["weight"] / 1000 * w["bodyFat"] / 100
+                out["lean"][d] = w["weight"] / 1000 - out["fatkg"][d]
+            if w.get("muscleMass"): out["muscle"][d] = w["muscleMass"] / 1000
+            if w.get("boneMass"): out["bone"][d] = w["boneMass"] / 1000
+            if w.get("bodyWater"): out["water"][d] = w["bodyWater"]
         es = call(g.get_endurance_score, A, B) or {}
         for d, v in (es.get("groupMap") or {}).items():
             val = v.get("groupAverage") if isinstance(v, dict) else None
@@ -420,11 +438,17 @@ def build(acts, daily, weekly, rng, start, end):
     add("health.steps", "health", "Schritte/Tag", "", "week", wser("steps"), agg="avg", dec=0)
     def rser(key):
         w = defaultdict(list)
-        for d, v in rng[key].items():
+        for d, v in rng.get(key, {}).items():
             if d and start.isoformat() <= d[:10] <= end.isoformat(): w[week_of(d[:10])].append(v)
         return [(k, sum(v) / len(v)) for k, v in sorted(w.items())]
     add("health.weight", "health", "Gewicht", "kg", "week", rser("weight"), agg="avg", better="down")
     add("health.fat", "health", "Körperfett", "%", "week", rser("fat"), agg="avg", better="down")
+    add("health.fatkg", "health", "Fettmasse", "kg", "week", rser("fatkg"), agg="avg", better="down")
+    add("health.lean", "health", "Fettfreie Masse", "kg", "week", rser("lean"), agg="avg")
+    add("health.muscle", "health", "Skelettmuskelmasse", "kg", "week", rser("muscle"), agg="avg")
+    add("health.bone", "health", "Knochenmasse", "kg", "week", rser("bone"), agg="avg", better="none", dec=2)
+    add("health.water", "health", "Körperwasser", "%", "week", rser("water"), agg="avg")
+    add("health.bmi", "health", "BMI", "", "week", rser("bmi"), agg="avg", better="none")
 
     # Fitness & Last
     wkeys = sorted(k for k in weekly if start.isoformat() <= k <= end.isoformat())
@@ -583,7 +607,7 @@ def run_export(tokens=None, years=4.0, out=None, full=False, no_health=False, in
     acts = fetch_activities(g, start, end, a.full)
     log(f"{len(acts)} Aktivitäten")
     if a.no_health:
-        daily, weekly, rng = Cache("daily").d, Cache("weekly").d, {k: {} for k in ("weight", "fat", "endur", "hill", "pred", "lthr", "ltpace")}
+        daily, weekly, rng = Cache("daily").d, Cache("weekly").d, {k: {} for k in RANGE_KEYS}
     else:
         daily = fetch_daily(g, start, end, a.full)
         weekly = fetch_weekly(g, start, end, a.full)

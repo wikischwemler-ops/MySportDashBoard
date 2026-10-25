@@ -3,5 +3,11 @@
   "years": 4,
   "refresh_hours": 6,
   "port": 8765,
-  "open_browser": true
+  "open_browser": true,
+  "bodycomp_exclude": [
+    [
+      "2025-03-17",
+      "2025-06-17"
+    ]
+  ]
 }
