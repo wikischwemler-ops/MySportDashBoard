@@ -45,6 +45,7 @@ h1{font-family:var(--f-display);font-weight:700;font-size:30px;letter-spacing:.0
 .seg button:focus-visible,.tab:focus-visible,.btn:focus-visible,.chip:focus-visible,.mini:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .btn{cursor:pointer;font:500 12px var(--f-body);padding:6px 11px;border-radius:7px;border:1px solid var(--line);background:var(--panel);color:var(--ink)}
 .btn:hover{border-color:var(--muted)}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--panel);border-color:var(--ink)}
 nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line);scrollbar-width:thin}
 .tab{all:unset;cursor:pointer;white-space:nowrap;font-family:var(--f-display);font-weight:600;font-size:16px;padding:8px 14px 9px;color:var(--muted);border-bottom:3px solid transparent;margin-bottom:-1px;display:flex;align-items:center;gap:7px}
 .tab .dot{width:8px;height:8px;border-radius:50%;background:var(--c,var(--muted))}
@@ -211,6 +212,7 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
       <div class="seg" role="group" aria-label="Zeitraum" id="range">
         <button data-m="3">3 M</button><button data-m="6">6 M</button><button data-m="12">1 J</button><button data-m="24">2 J</button><button data-m="48">4 J</button><button data-m="0" aria-pressed="true">Alle</button>
       </div>
+      <button class="btn" id="trendbtn" aria-pressed="false" title="Gestrichelte lineare Trendlinie zu jeder Kurve in allen Auswertungen">Trendlinien</button>
       <button class="btn" id="upd" hidden>Jetzt aktualisieren</button>
       <button class="btn" id="logout" hidden>Sperren</button>
       <label class="btn" for="file">JSON laden</label>
@@ -248,12 +250,12 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 const COLORS={all:"--all",run:"--run",bike:"--bike",swim:"--swim",other:"--other",fit:"--fit",health:"--health",pred:"--pred"};
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const col=g=>css(COLORS[g]||"--accent");
-let DATA=null, RANGE=0, TAB="overview", charts=[];   // RANGE in Monaten, 0 = alle Daten
+let DATA=null, RANGE=0, TAB="overview", TREND=false, charts=[];   // RANGE in Monaten, 0 = alle Daten
 const sel={}; // gewählte Kennlinie je Reiter
 const optMA={}, optTrend={};
 const exp={a:"run.km",b:"fit.vo2run",c:"",norm:false};
-try{const s=JSON.parse(localStorage.getItem("gd-ui")||"{}");if(s.range!=null)RANGE=s.range;if(s.tab)TAB=s.tab;}catch(e){}
-const save=()=>{try{localStorage.setItem("gd-ui",JSON.stringify({range:RANGE,tab:TAB}))}catch(e){}};
+try{const s=JSON.parse(localStorage.getItem("gd-ui")||"{}");if(s.range!=null)RANGE=s.range;if(s.tab)TAB=s.tab;TREND=!!s.trend;}catch(e){}
+const save=()=>{try{localStorage.setItem("gd-ui",JSON.stringify({range:RANGE,tab:TAB,trend:TREND}))}catch(e){}};
 
 // ---------- Formatierung ----------
 const nf=(v,d)=>v==null||isNaN(v)?"–":v.toLocaleString("de-DE",{minimumFractionDigits:d,maximumFractionDigits:d});
@@ -285,6 +287,15 @@ function delta(s){const a=startTs(),pa=startTs(RANGE,a);const cur=aggr(s,a,END),
   const d=(cur-prev)/Math.abs(prev)*100;const good=s.better==="none"?null:(s.better==="down"?d<0:d>0);
   return{txt:(d>=0?"+":"")+nf(d,1)+" % ggü. Vorzeitraum",cls:Math.abs(d)<0.5||good==null?"":good?"good":"bad"};}
 function movAvg(p,n){return p.map((q,i)=>{const w=p.slice(Math.max(0,i-n+1),i+1);return{x:q.x,y:w.reduce((a,b)=>a+b.y,0)/w.length};});}
+// Globaler Schalter „Trendlinien“: jede Kurve bekommt eine gestrichelte lineare Trendlinie in ihrer Farbe
+function withTrends(ds,o){if(!TREND)return ds;
+  const t=ds.filter(d=>!d._trend&&!d._noTrend&&!d.stepped&&!(d.label||"").startsWith("_")&&Array.isArray(d.data)&&d.data.length>2&&d.data[0]&&d.data[0].x!=null)
+    .map(d=>({data:trend(d.data.filter(q=>q&&q.y!=null)),label:"Trend · "+(d.label||""),borderColor:d.borderColor,borderWidth:1.5,borderDash:[6,4],
+      pointRadius:0,pointHoverRadius:0,fill:false,tension:0,yAxisID:d.yAxisID,_trend:true,order:-1}));
+  const tt=o.plugins&&o.plugins.tooltip;if(tt){const tf=tt.filter;tt.filter=(it,...r)=>!it.dataset._trend&&(!tf||tf(it,...r));}
+  const lg=o.plugins&&o.plugins.legend;if(lg&&lg.display){lg.labels=lg.labels||{};const f=lg.labels.filter;lg.labels.filter=(it,cd)=>!cd.datasets[it.datasetIndex]._trend&&(!f||f(it,cd));}
+  return ds.concat(t);}
+const trendChart=(canvas,cfg)=>{cfg.data.datasets=withTrends(cfg.data.datasets,cfg.options);return new Chart(canvas,cfg);};
 function trend(p){if(p.length<3)return[];const n=p.length,mx=p.reduce((a,b)=>a+b.x,0)/n,my=p.reduce((a,b)=>a+b.y,0)/n;
   let num=0,den=0;for(const q of p){num+=(q.x-mx)*(q.y-my);den+=(q.x-mx)**2;}const k=num/den;return[{x:p[0].x,y:my+k*(p[0].x-mx)},{x:p[n-1].x,y:my+k*(p[n-1].x-mx)}];}
 
@@ -336,9 +347,9 @@ function wheelZoom(chart){if(chart._wz)return;chart._wz=1;const cv=chart.canvas,
 function mainChart(canvas,id,ma=optMA[TAB],tr=optTrend[TAB]){
   const s=DATA.series[id],c=col(s.group),p=pts(s);const o=baseOpts();o.scales.y=yAxis(s);
   const ds=[lineDs(s,p,c)];
-  if(ma){const n=s.freq==="week"?8:3;ds.push(lineDs(s,movAvg(p,n),css("--ink"),{fill:false,borderWidth:1.6,pointRadius:0,borderDash:[],lbl:"Ø gleitend ("+n+(s.freq==="week"?" Wo)":" Mo)")}));}
-  if(tr){ds.push(lineDs(s,trend(p),css("--muted"),{fill:false,borderWidth:1.4,pointRadius:0,borderDash:[6,4],tension:0,lbl:"Trend"}));}
-  charts.push(new Chart(canvas,{type:"line",data:{datasets:ds},options:o}));
+  if(ma){const n=s.freq==="week"?8:3;ds.push({...lineDs(s,movAvg(p,n),css("--ink"),{fill:false,borderWidth:1.6,pointRadius:0,borderDash:[],lbl:"Ø gleitend ("+n+(s.freq==="week"?" Wo)":" Mo)")}),_noTrend:true});}
+  if(tr&&!TREND){ds.push(lineDs(s,trend(p),css("--muted"),{fill:false,borderWidth:1.4,pointRadius:0,borderDash:[6,4],tension:0,lbl:"Trend"}));}
+  charts.push(trendChart(canvas,{type:"line",data:{datasets:ds},options:o}));
 }
 function spark(canvas,s){const c=col(s.group),p=pts(s);
   charts.push(new Chart(canvas,{type:"line",data:{datasets:[{data:p,borderColor:c,backgroundColor:c+"1f",fill:true,borderWidth:1.5,pointRadius:0,tension:.3}]},
@@ -355,7 +366,7 @@ function volChart(canvas){
   const o=baseOpts();o.plugins.legend={display:true,position:"bottom",labels:{boxWidth:14,boxHeight:3}};
   o.scales.y={grid:{color:css("--line")},border:{display:false},title:{display:true,text:"h"},ticks:{maxTicksLimit:6},beginAtZero:true};
   o.plugins.tooltip.mode="index";o.plugins.tooltip.callbacks.label=it=>" "+it.dataset.label+": "+nf(it.parsed.y,1)+" h";
-  charts.push(new Chart(canvas,{type:"line",data:{datasets:groups.map(([id,l,g])=>{const pp=pts(DATA.series[id]);return{label:l,data:pp,borderColor:col(g),backgroundColor:col(g)+"14",fill:true,tension:.3,borderWidth:2,pointRadius:pp.length<30?2.5:0,pointHoverRadius:4};})},options:o}));
+  charts.push(trendChart(canvas,{type:"line",data:{datasets:groups.map(([id,l,g])=>{const pp=pts(DATA.series[id]);return{label:l,data:pp,borderColor:col(g),backgroundColor:col(g)+"14",fill:true,tension:.3,borderWidth:2,pointRadius:pp.length<30?2.5:0,pointHoverRadius:4};})},options:o}));
 }
 function renderOverview(view){
   view.append(h(`<div class="kpis">${kpi("run.km","Laufen km")}${kpi("bike.km","Rad km")}${kpi("swim.km","Schwimmen km")}${kpi("fit.vo2run","VO2max Laufen")}${kpi("health.rhr","Ruhepuls Ø")}${kpi("health.hrv","HRV Ø")}</div>`));
@@ -377,7 +388,7 @@ function renderOverview(view){
   for(const id of ["fit.vo2run","health.hrv","fit.ctl","health.weight"].filter(i=>DATA.series[i])){
     const s=DATA.series[id];const b=h(`<section class="panel"><div class="ph"><h2>${s.label}</h2><span class="right"><span class="note">${unitOf(s)}</span>${bigBtn("series:"+id)}</span></div><div class="chartbox sm"><canvas></canvas></div></section>`);
     g2.append(b);const o2=baseOpts();o2.scales.y=yAxis(s);
-    const p2=pts(s);charts.push(new Chart(b.querySelector("canvas"),{type:"line",data:{datasets:[lineDs(s,p2,col(s.group),{pointRadius:0}),lineDs(s,movAvg(p2,8),css("--ink"),{fill:false,borderWidth:1.4,pointRadius:0,lbl:"Ø 8 Wochen"})]},options:o2}));
+    const p2=pts(s);charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:[lineDs(s,p2,col(s.group),{pointRadius:0}),{...lineDs(s,movAvg(p2,8),css("--ink"),{fill:false,borderWidth:1.4,pointRadius:0,lbl:"Ø 8 Wochen"}),_noTrend:true}]},options:o2}));
   }
 }
 
@@ -395,7 +406,7 @@ function lfChart(canvas){
     ds.push({label:"_"+lbl+" min",data:L.map(o=>({x:o.x,y:o.v[i+1]})),borderColor:"transparent",pointRadius:0,fill:false,stepped:"before",order:3});
     ds.push({label:"_"+lbl+" max",data:L.map(o=>({x:o.x,y:o.v[i+2]})),borderColor:"transparent",backgroundColor:c+"24",pointRadius:0,fill:"-1",stepped:"before",order:3});});
   // Reihenfolge so, dass Linien zuerst im Index stehen (für Tooltip-Zuordnung b)
-  charts.push(new Chart(canvas,{type:"line",data:{datasets:ds},options:o}));
+  charts.push(trendChart(canvas,{type:"line",data:{datasets:ds},options:o}));
 }
 function renderLoadStatus(view){
   const E=DATA.extra||{};
@@ -459,7 +470,7 @@ function bodyChart(canvas,av){
     o.scales[yid]=yAxis(s,{position:"right",display:n===0,grid:{drawOnChartArea:false},ticks:{color:c,maxTicksLimit:6,callback:x=>fmt(s,x)},
       title:{display:true,text:s.label+(unitOf(s)?" ("+unitOf(s)+")":""),color:c}});
     ds.push({...lineDs(s,sm(pts(s)),c,{fill:false,pointRadius:0}),label:s.label+(unitOf(s)?" ("+unitOf(s)+")":""),yAxisID:yid,order:1});n++;});
-  charts.push(new Chart(canvas,{type:"line",data:{datasets:ds},options:o}));
+  charts.push(trendChart(canvas,{type:"line",data:{datasets:ds},options:o}));
 }
 
 function renderExplorer(view){
@@ -487,7 +498,7 @@ function expChart(canvas){
       ds.push({...lineDs(s,pp,slotCols[i],{fill:false,pointRadius:0,label}),yAxisID:yid});ax++;}
   });
   if(exp.norm)o.scales.y={grid:{color:css("--line")},border:{display:false},title:{display:true,text:"Index"},ticks:{maxTicksLimit:6}};
-  charts.push(new Chart(canvas,{type:"line",data:{datasets:ds},options:o}));
+  charts.push(trendChart(canvas,{type:"line",data:{datasets:ds},options:o}));
 }
 
 // =================== Vergrößern (Vollbild-Kennlinie) ===================
@@ -851,6 +862,8 @@ function load(d,origin){
   if(!live){n.hidden=false;n.className="msg";n.textContent="Das sind Beispieldaten, nicht deine eigenen Werte. Sobald der Export aus Garmin Connect läuft, ersetzt die neue data.json sie automatisch.";}else n.hidden=true;
   render();
 }
+const trendBtn=document.getElementById("trendbtn");trendBtn.setAttribute("aria-pressed",TREND);
+trendBtn.onclick=()=>{TREND=!TREND;trendBtn.setAttribute("aria-pressed",TREND);save();if(DATA)render();};
 document.getElementById("range").onclick=e=>{const b=e.target.closest("button");if(!b)return;RANGE=+b.dataset.m;save();render();};
 function readFile(f){const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(j&&j.series)load(j);else if(!setActs(j))throw new Error("weder Kennlinien (data.json) noch Aktivitäten (activities.json)");}catch(err){showErr("Die Datei konnte nicht gelesen werden: "+err.message);}};r.readAsText(f);}
 document.getElementById("file").onchange=e=>e.target.files[0]&&readFile(e.target.files[0]);
