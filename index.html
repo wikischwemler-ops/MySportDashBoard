@@ -155,10 +155,14 @@ code{font-family:var(--f-mono);font-size:12px;background:var(--soft);padding:1px
 .hmgrid>*{aspect-ratio:1;border-radius:2px;background:var(--soft);min-width:0}
 .hmgrid .x{visibility:hidden}
 .hmgrid button{all:unset;box-sizing:border-box;aspect-ratio:1;border-radius:2px;cursor:pointer}
-.hmgrid .l1,.hmleg .l1{background:color-mix(in srgb,var(--c) 30%,var(--soft))}
-.hmgrid .l2,.hmleg .l2{background:color-mix(in srgb,var(--c) 55%,var(--soft))}
-.hmgrid .l3,.hmleg .l3{background:color-mix(in srgb,var(--c) 80%,var(--soft))}
-.hmgrid .l4,.hmleg .l4{background:var(--c)}
+/* Farbverlauf kühl → heiß: wenig Training blau, viel Training rot */
+:root{--hm1:#3b6fd1;--hm2:#2fa8b8;--hm3:#e8a520;--hm4:#d23f31}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--hm1:#4f86f0;--hm2:#3cc4cf;--hm3:#f2b440;--hm4:#ff5a45}}
+:root[data-theme="dark"]{--hm1:#4f86f0;--hm2:#3cc4cf;--hm3:#f2b440;--hm4:#ff5a45}
+.hmgrid .l1,.hmleg .l1{background:var(--hm1)}
+.hmgrid .l2,.hmleg .l2{background:var(--hm2)}
+.hmgrid .l3,.hmleg .l3{background:var(--hm3)}
+.hmgrid .l4,.hmleg .l4{background:var(--hm4)}
 .hmgrid button:hover{outline:1px solid var(--ink)}
 .hmgrid button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .hmgrid .td{outline:1px solid var(--muted)}
@@ -522,7 +526,6 @@ function drawHeat(){
   const rows=r==="12m"?[[null,U(te.getUTCFullYear()-1,te.getUTCMonth(),te.getUTCDate()+1),te]]
     :(r==="all"?years:[+r]).map(y=>[y,U(y,0,1),U(y,11,31)]);
   const selD=(A.find(a=>a.id===ACT.sel)||{}).d;
-  const c=ACT.filter==="all"?"--good":SP[ACT.filter].v;
   const lv=h=>HM_LV.findIndex(([t])=>h<t)+1;
   const stats=(s,e)=>{let n=0,hs=0,days=0,run=0,best=0;
     for(let d=new Date(s);d<=e&&iso(d)<=tk;d.setUTCDate(d.getUTCDate()+1)){const o=byDay[iso(d)];if(o){n+=o.n;hs+=o.h;days++;run++;best=Math.max(best,run);}else run=0;}
@@ -543,7 +546,6 @@ function drawHeat(){
       <div class="hmwd"><span></span><div>${WD.map((w,i)=>`<span>${i%2?"":w}</span>`).join("")}</div></div>
       <div class="hmbody"><div class="hmmon">${labels}</div><div class="hmgrid">${cells}</div></div></div>`;};
   const opts=[["12m","12 Monate"],...years.map(y=>[String(y),String(y)]),["all","Alle"]];
-  box.style.setProperty("--c",`var(${c})`);
   box.innerHTML=`<div class="calhead"><div class="calnav"><h2 style="min-width:0;text-align:left">Trainingstage</h2></div>
       <div class="seg" role="group" aria-label="Zeitraum">${opts.map(([k,l])=>`<button data-hr="${k}" aria-pressed="${k===r}">${l}</button>`).join("")}</div></div>
     <div class="hmscroll">${rows.map(row).join("")}</div>
