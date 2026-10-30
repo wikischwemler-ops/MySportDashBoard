@@ -599,6 +599,74 @@ def activity_detail(g, aid, cache_dir: Path):
     return out
 
 # --------------------------------------------------------------------------- main
+PLAN_SPORT = {"running": "run", "trail_running": "run", "cycling": "bike", "swimming": "swim", "lap_swimming": "swim"}
+STEP_NAME = {"warmup": "Einlaufen", "cooldown": "Auslaufen", "interval": "Belastung", "recovery": "Erholung",
+             "rest": "Pause", "other": "Abschnitt", "main": "Hauptteil"}
+
+def _pace(v, swim):
+    if not v: return None
+    s = (100 if swim else 1000) / v
+    return f"{int(s // 60)}:{int(round(s % 60)):02d}"
+
+def plan_step(s, swim):
+    """Workout-Schritt (Garmin-DTO) → {t, end, tgt, note}, Wiederholungsblock → {rep, steps}; dazu geschätzte Dauer/Strecke."""
+    if s.get("type") == "RepeatGroupDTO":
+        n = int(s.get("numberOfIterations") or 1)
+        sub = [plan_step(c, swim) for c in s.get("workoutSteps") or []]
+        return {"rep": n, "steps": [x[0] for x in sub]}, n * sum(x[1] for x in sub), n * sum(x[2] for x in sub)
+    cond, val = dig(s, "endCondition", "conditionTypeKey"), s.get("endConditionValue") or 0
+    sec = val if cond == "time" else 0
+    m = val if cond == "distance" else 0
+    end = ((f"{int(sec // 60)} min" if sec % 60 == 0 else f"{int(sec)} s" if sec < 120 else f"{int(sec // 60)}:{int(sec % 60):02d} min") if cond == "time" else
+           (f"{nf_de(m / 1000, 1 if m % 1000 else 0)} km" if m >= 1000 else f"{int(m)} m") if cond == "distance" else
+           "bis Lap-Taste" if cond == "lap.button" else "")
+    tt, a, b = dig(s, "targetType", "workoutTargetTypeKey"), s.get("targetValueOne"), s.get("targetValueTwo")
+    z = s.get("zoneNumber")
+    tgt = ""
+    if tt == "heart.rate.zone":
+        tgt = (f"Z{z} " if z else "") + (f"{int(a)}-{int(b)} bpm" if a and b else "")
+    elif tt in ("pace.zone", "speed.zone") and a and b:
+        tgt = f"{_pace(max(a, b), swim)}-{_pace(min(a, b), swim)} /{'100 m' if swim else 'km'}"
+    elif tt == "power.zone" and a and b:
+        tgt = (f"Z{z} " if z else "") + f"{int(a)}-{int(b)} W"
+    elif tt == "cadence" and a and b:
+        tgt = f"{int(a)}-{int(b)} spm"
+    return {"t": STEP_NAME.get(dig(s, "stepType", "stepTypeKey"), "Abschnitt"), "end": end.strip(), "tgt": tgt.strip(),
+            "note": (s.get("description") or "").strip()}, sec, m
+
+def nf_de(v, d):
+    return f"{v:,.{d}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def fetch_plan(g, today):
+    """Geplante Workouts (mit Schritten, erledigt = mit Aktivität verknüpft) und Wettkampftermine aus dem Garmin-Kalender."""
+    a, b = (today.replace(day=1) - dt.timedelta(days=62)).replace(day=1), today + dt.timedelta(days=150)
+    items = []
+    for s in call(g.get_scheduled_workouts_by_period, a.isoformat(), b.isoformat()) or []:
+        w = s.get("workout") or {}
+        key = dig(w, "sportType", "sportTypeKey") or ""
+        swim = PLAN_SPORT.get(key) == "swim"
+        steps, sec, m = [], 0, 0
+        for seg in w.get("workoutSegments") or []:
+            for st in seg.get("workoutSteps") or []:
+                x, ds, dm = plan_step(st, swim); steps.append(x); sec += ds; m += dm
+        items.append({"id": s.get("workoutScheduleId"), "d": s.get("calendarDate"), "sp": PLAN_SPORT.get(key, "other"),
+                      "name": s.get("newName") or w.get("workoutName") or "Workout", "desc": w.get("description") or "",
+                      "dur": w.get("estimatedDurationInSecs") or sec or None, "m": w.get("estimatedDistanceInMeters") or m or None,
+                      "aid": s.get("associatedActivityId"), "race": bool(s.get("race")), "steps": steps})
+    events, seen = [], set()
+    y, mo = a.year, a.month
+    while (y, mo) <= (b.year, b.month):
+        for c in (call(g.get_scheduled_workouts, y, mo) or {}).get("calendarItems") or []:
+            if c.get("itemType") == "event" and (c.get("date"), c.get("title")) not in seen:
+                seen.add((c.get("date"), c.get("title")))
+                ct = c.get("completionTarget") or {}
+                events.append({"d": c.get("date"), "name": c.get("title"), "loc": c.get("location"),
+                               "km": round(ct["value"] / 1000, 1) if ct.get("unit") == "meter" and ct.get("value") else None,
+                               "primary": bool(c.get("primaryEvent"))})
+        y, mo = (y + 1, 1) if mo == 12 else (y, mo + 1)
+    items.sort(key=lambda x: (x["d"] or "", x["id"] or 0)); events.sort(key=lambda x: x["d"] or "")
+    return {"from": a.isoformat(), "to": b.isoformat(), "items": items, "events": events}
+
 def run_export(tokens=None, years=4.0, out=None, full=False, no_health=False, interactive=True):
     global CACHE
     out = Path(out or app_dir())
@@ -625,6 +693,8 @@ def run_export(tokens=None, years=4.0, out=None, full=False, no_health=False, in
     w = sorted(rng.get("weight", {}).items())
     kg = w[-1][1] if w else (u.get("weight") or 0) / 1000
     data["meta"]["body"] = {"kg": round(kg, 1) if kg else None, "cm": u.get("height")}
+    data["plan"] = fetch_plan(g, end)
+    log(f"Trainingsplan: {len(data['plan']['items'])} geplante Workouts, {len(data['plan']['events'])} Wettkämpfe")
     act_list = data.pop("activities")          # Einzelaktivitäten getrennt von den Kennlinien
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     def write(name, var, obj):
