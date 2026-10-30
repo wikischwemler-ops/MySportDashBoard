@@ -68,6 +68,19 @@ nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line
 .opts label{display:flex;gap:5px;align-items:center;cursor:pointer}
 .chartbox{position:relative;height:clamp(320px,52vh,720px);width:100%}
 .chartbox.sm{height:270px}
+.chartbox.xs{height:200px}
+.ro-sum{font-size:14px;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--run) 9%,transparent);border-left:3px solid var(--run);margin-bottom:12px}
+.ro-t td,.ro-t th{vertical-align:middle}.ro-t small{color:var(--muted);font-weight:400;font-size:10.5px}
+.ro-bar{display:inline-block;width:80px;height:7px;border-radius:4px;background:var(--soft);vertical-align:middle;overflow:hidden}
+.ro-bar i{display:block;height:100%;background:var(--run)}
+.ro-v{font-family:var(--f-mono);font-size:11.5px;padding:2px 7px;border-radius:4px;background:var(--soft);color:var(--muted);white-space:nowrap}
+.ro-v.good{color:var(--good);background:color-mix(in srgb,var(--good) 14%,transparent)}
+.ro-v.bad{color:var(--bad);background:color-mix(in srgb,var(--bad) 14%,transparent)}
+.ro-note{font-size:12px;color:var(--muted);margin:10px 0 14px}
+.ro-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:14px}
+.ro-c{border:1px solid var(--line);border-radius:9px;padding:10px 12px;min-width:0}
+.ro-c h3{font-size:14.5px;font-weight:600;margin:0}.ro-c .ph{margin-bottom:2px}
+.ro-i{font-size:12px;color:var(--muted);margin:0 0 6px;min-height:2.8em}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 @media (max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
 .ph .right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -452,6 +465,7 @@ function volChart(canvas){
 }
 function renderOverview(view){
   view.append(h(`<div class="kpis">${kpi("run.km","Laufen km")}${kpi("bike.km","Rad km")}${kpi("swim.km","Schwimmen km")}${kpi("fit.vo2run","VO2max Laufen")}${kpi("health.rhr","Ruhepuls Ø")}${kpi("health.hrv","HRV Ø")}</div>`));
+  renderRunOpt(view);
   const p=h(`<section class="panel"><div class="ph"><h2>Trainingszeit pro Monat</h2><span class="right"><span class="note">Stunden je Disziplin</span>${bigBtn("vol")}</span></div><div class="chartbox"><canvas></canvas></div></section>`);
   view.append(p);volChart(p.querySelector("canvas"));
 
@@ -472,6 +486,59 @@ function renderOverview(view){
     g2.append(b);const o2=baseOpts();o2.scales.y=yAxis(s);
     const p2=pts(s);charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:[lineDs(s,p2,col(s.group),{pointRadius:0}),{...lineDs(s,movAvg(p2,8),css("--ink"),{fill:false,borderWidth:1.4,pointRadius:0,lbl:"Ø 8 Wochen"}),_noTrend:true}]},options:o2}));
   }
+}
+
+// ---- Laufoptimierung: Laufökonomie, Schwelle, Max-Puls, Laufstil mit Bewertung der Entwicklung ----
+// Bewertung je Kennlinie über alle Daten: robuste Ausreißer (> 3,5 MAD) raus, aktuell = Ø der letzten 90 Tage,
+// Trend = lineare Regression der letzten 12 Monate (pro Jahr), Bestform = bestes 90-Tage-Mittel, alles in Standardabweichungen (σ) der Kennlinie
+const RO=[["run.ri","Laufindex","Sauerstoffbedarf deines Tempos, hochgerechnet auf 100 % HF-Reserve. Steigt, wenn du bei gleichem Puls schneller wirst."],
+  ["run.pref",null,"Tempo bei fester Herzfrequenz aus deinen Dauerläufen. Direktes Maß für aerobe Effizienz."],
+  ["run.ef","Effizienzfaktor","Meter pro Minute je Herzschlag (Friel). Mehr = ökonomischer."],
+  ["fit.ltpace","Laktatschwelle Pace","Garmin-Schätzung der Schwellenpace."],
+  ["fit.lthr","Laktatschwelle HF","Garmin-Schätzung des Schwellenpulses. Folgt dem Max-Puls und ist daher kein Leistungsmaß; entscheidend ist die Schwellenpace.","none"],
+  ["fit.vo2run","VO2max Laufen","Garmin-Schätzung, Frühjahr 2025 ist ein Ausreißer und wird ignoriert."],
+  ["run.gct_r","Bodenkontakt (tempobereinigt)","Kontaktzeit minus Erwartungswert für dein Tempo. Kürzer spricht für mehr Federsteifigkeit."],
+  ["run.cad_r","Kadenz (tempobereinigt)","Schritte/min minus Erwartungswert für dein Tempo. Keine Richtung ist per se besser."],
+  ["run.step_r","Schrittlänge (tempobereinigt)","Schrittlänge minus Erwartungswert für dein Tempo. Gegenstück zur Kadenz."],
+  ["run.hrmax","Max-Puls (bereinigt)","Höchster plausibler Puls der letzten 12 Monate, optische Fehlmessungen entfernt. Sinkt mit dem Alter, kein Leistungsmaß."]];
+function roEval(s){
+  let P=s.d.filter(p=>p[1]!=null).map(p=>({x:toTs(p[0]),y:p[1]}));if(P.length<6)return null;
+  const med=a=>{const b=[...a].sort((x,y)=>x-y),n=b.length;return n%2?b[n>>1]:(b[n/2-1]+b[n/2])/2;};
+  const m=med(P.map(p=>p.y)),mad=med(P.map(p=>Math.abs(p.y-m)))*1.4826||1e-9;
+  const out=P.filter(p=>Math.abs(p.y-m)>3.5*mad);P=P.filter(p=>Math.abs(p.y-m)<=3.5*mad);
+  const last=P[P.length-1].x,D=864e5,avg=a=>a.length?a.reduce((s,p)=>s+p.y,0)/a.length:null,win=(a,b)=>P.filter(p=>p.x>a&&p.x<=b);
+  const mean=avg(P),sd=Math.sqrt(P.reduce((s,p)=>s+(p.y-mean)**2,0)/(P.length-1))||1e-9,sg=s.better==="down"?-1:1;
+  const cur=avg(win(last-90*D,last)),ago=avg(win(last-455*D,last-275*D));
+  let best=null,bestAt=null;P.forEach(p=>{const a=avg(win(p.x-90*D,p.x));if(a!=null&&p.x-P[0].x>=60*D&&(best==null||sg*a>sg*best)){best=a;bestAt=p.x;}});
+  const T=win(last-365*D,last),k=T.length>=4?(()=>{const n=T.length,mx=T.reduce((a,p)=>a+p.x,0)/n,my=T.reduce((a,p)=>a+p.y,0)/n;let u=0,v=0;T.forEach(p=>{u+=(p.x-mx)*(p.y-my);v+=(p.x-mx)**2;});return u/v;})():null;
+  const yr=k==null?null:k*365*D,z=yr==null?0:sg*yr/sd,gap=best==null||s.better==="none"?0:sg*(best-cur)/sd;
+  return{P,out,cur,ago,best,bestAt,yr,z,gap,sd,T,k};}
+function renderRunOpt(view){
+  const L=RO.filter(([id])=>DATA.series[id]).map(([id,l,info,bt])=>{const s=bt?{...DATA.series[id],better:bt}:DATA.series[id];return{id,s,l:l||s.label,info,e:roEval(s)};}).filter(o=>o.e);
+  if(!L.length)return;
+  const ref=(DATA.meta||{}).ref_hr,sec=h(`<section class="panel ro"><div class="ph"><h2>Laufoptimierung</h2><span class="note">Aerobe Dauerläufe ab 5 km, unter 15 Hm/km, 50–85 % HF-Reserve${ref?` · Referenzpuls ${ref} bpm = dein Median`:""}</span></div></section>`);
+  view.append(sec);
+  const rated=L.filter(o=>o.s.better!=="none").sort((a,b)=>(b.e.gap-b.e.z)-(a.e.gap-a.e.z));
+  const verdict=o=>o.s.better==="none"?["neutral","beobachten"]:o.e.z>.4?["good","verbessert sich"]:o.e.z<-.4?["bad","verschlechtert sich"]:["flat","stagniert"];
+  const dlt=(o,v)=>{if(v==null||o.e.cur==null)return"–";const d=o.e.cur-v,sg=o.s.better==="down"?-1:1,c=o.s.better==="none"||Math.abs(d)<.15*o.e.sd?"":sg*d>0?"good":"bad";
+    return`<span class="delta ${c}">${d>=0?"+":"−"}${o.s.fmt==="pace"?fmt(o.s,Math.abs(d)):nf(Math.abs(d),o.s.dec??1)}</span>`;};
+  const yrTxt=o=>o.e.yr==null?"–":`${o.e.yr>=0?"+":"−"}${o.s.fmt==="pace"?fmt(o.s,Math.abs(o.e.yr)):nf(Math.abs(o.e.yr),o.s.dec??1)} /Jahr`;
+  const top=rated.filter(o=>o.e.gap>.5||o.e.z<-.4).slice(0,3);
+  sec.append(h(`<div class="ro-sum">${top.length?`<b>Hier liegt dein größtes Potenzial:</b> ${top.map(o=>`${o.l} (${o.e.gap>.5?`${nf(o.e.gap,1)} σ unter deiner Bestform`:""}${o.e.gap>.5&&o.e.z<-.4?", ":""}${o.e.z<-.4?"Trend fallend":""})`).join(" · ")}.`:`<b>Alle Kennwerte liegen nahe deiner Bestform und keiner fällt.</b>`}</div>`));
+  sec.append(h(`<div class="tblwrap"><table class="ro-t"><thead><tr><th style="text-align:left">Kennwert</th><th>Aktuell<br><small>Ø 90 Tage</small></th><th>vs. Vorjahr</th><th>Bestform<br><small>bestes 90-T-Mittel</small></th><th>Trend<br><small>12 Monate</small></th><th style="text-align:left">Abstand zur Bestform</th><th style="text-align:left">Bewertung</th></tr></thead><tbody>
+    ${[...rated,...L.filter(o=>o.s.better==="none")].map(o=>{const[vc,vt]=verdict(o),g=Math.max(0,Math.min(3,o.e.gap));
+      return`<tr title="${o.info.replace(/"/g,"&quot;")}"><td style="text-align:left;font-family:var(--f-body)"><span style="color:${col(o.s.group)}">●</span> ${o.l} <span style="color:var(--muted)">${unitOf(o.s)}</span></td>
+      <td><b>${fmt(o.s,o.e.cur)}</b></td><td>${dlt(o,o.e.ago)}</td><td>${o.s.better==="none"?"–":`${fmt(o.s,o.e.best)}<br><small>${tsLabel(o.e.bestAt)}</small>`}</td><td>${yrTxt(o)}</td>
+      <td style="text-align:left">${o.s.better==="none"?"":`<span class="ro-bar"><i style="width:${g/3*100}%"></i></span> ${nf(o.e.gap,1)} σ`}</td>
+      <td style="text-align:left"><span class="ro-v ${vc}">${vt}</span></td></tr>`;}).join("")}</tbody></table></div>`));
+  sec.append(h(`<p class="ro-note">σ = Standardabweichung der Monatswerte; Trend „verbessert/verschlechtert“ ab 0,4 σ pro Jahr. Ausreißer über 3,5 robuste Standardabweichungen (z. B. VO2max Frühjahr 2025) zählen nicht. Kurven: Monatswerte, gleitendes 3-Monats-Mittel und linearer Trend der letzten 12 Monate (grün = Verbesserung, rot = Verschlechterung).</p>`));
+  const g=h(`<div class="ro-grid"></div>`);sec.append(g);
+  L.forEach(o=>{const s=o.s,[vc]=verdict(o),b=h(`<div class="ro-c"><div class="ph"><h3>${o.l}</h3><span class="note">${unitOf(s)} ${bigBtn("series:"+o.id)}</span></div><p class="ro-i">${o.info}</p><div class="chartbox xs"><canvas></canvas></div></div>`);g.append(b);
+    const p=pts(s).filter(q=>!o.e.out.some(x=>x.x===q.x)),ma=s.freq==="week"?12:3,o2=baseOpts();o2.scales.y=yAxis(s);o2.plugins.legend={display:false};
+    const tc=css(vc==="good"?"--good":vc==="bad"?"--bad":"--muted"),T=o.e.T.length>=4?[o.e.T[0],o.e.T[o.e.T.length-1]].map(q=>({x:q.x,y:o.e.T.reduce((a,p)=>a+p.y,0)/o.e.T.length+o.e.k*(q.x-o.e.T.reduce((a,p)=>a+p.x,0)/o.e.T.length)})):[];
+    const ds=[lineDs(s,p,col(s.group)+"99",{fill:false,pointRadius:2}),{...lineDs(s,movAvg(p,ma),col(s.group),{fill:false,borderWidth:2.4,pointRadius:0,lbl:`Ø ${ma} ${s.freq==="week"?"Wochen":"Monate"}`}),_noTrend:true}];
+    if(T.length)ds.push({data:T,borderColor:tc,borderWidth:3,borderDash:[7,4],pointRadius:0,fill:false,tension:0,_noTrend:true,label:"Trend 12 Monate",tooltip:{callbacks:{label:()=>" Trend 12 Monate: "+yrTxt(o)}}});
+    charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:ds},options:o2}));});
 }
 
 // ---- Load-Fokus (3 Bänder mit Zielbereich) + Trainingsstatus ----

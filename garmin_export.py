@@ -358,6 +358,60 @@ def wavg(items, key, w="dur"):
     den = sum((a[w] or 0) for a in items if a.get(key))
     return num / den if den else None
 
+def run_economy(acts, daily):
+    """Laufökonomie je Monat aus aeroben Dauerläufen (≥ 5 km, < 15 Hm/km, 50–85 % HF-Reserve).
+    HF-Reserve nach Karvonen mit robuster HFmax (Monatsmaxima der letzten 12 Monate ohne Spitzen > Median + 8 bpm,
+    optische Messfehler) und Ruhepuls als 12-Monats-Median. Laufindex = VO2 der Geschwindigkeit (ACSM, 0,2·v + 3,5)
+    hochgerechnet auf 100 % HF-Reserve (Swain: %HRR ≈ %VO2R), vergleichbar mit Polars Running Index.
+    Effizienzfaktor = m/min je Herzschlag. Pace bei Referenz-HF = Tempo linear über die HF-Reserve auf die
+    Referenz-HF umgerechnet (Referenz = Median-HF aller Dauerläufe, auf 5 bpm gerundet).
+    Laufstil tempobereinigt: Abweichung von der Tempo-Regression über alle Dauerläufe (Schrittlänge, Kadenz, Bodenkontakt)."""
+    import statistics as st
+    runs = sorted((a for a in acts if sport(a["t"]) == "run"), key=lambda a: a["d"])
+    rk = sorted((d, v["rhr"]) for d, v in daily.items() if v and v.get("rhr"))
+    mm = defaultdict(int)
+    for a in runs:
+        if a.get("maxhr"): mm[a["d"][:7]] = max(mm[a["d"][:7]], a["maxhr"])
+    mkeys = sorted(mm)
+    def hrmax(m):
+        L = [mm[k] for k in mkeys if k <= m][-12:]
+        if not L: return None
+        med = st.median(L); return max(x for x in L if x <= med + 8)
+    def rest(d):
+        lo = (dt.date.fromisoformat(d) - dt.timedelta(days=365)).isoformat()
+        L = [v for k, v in rk if lo <= k <= d] or [v for _, v in rk[:30]]
+        return st.median(L) if L else None
+    P = []
+    for a in runs:
+        km = (a["dist"] or 0) / 1000
+        if km < 5 or not a.get("hr") or not a.get("mov") or (a["elev"] or 0) / km >= 15: continue
+        hm, r0 = hrmax(a["d"][:7]), rest(a["d"])
+        if not hm or not r0 or hm - r0 < 60: continue
+        hrr = (a["hr"] - r0) / (hm - r0)
+        if not .5 <= hrr <= .85: continue
+        cad = a.get("cad") if (a.get("cad") or 0) >= 140 else None
+        v = a["dist"] / a["mov"] * 60                                      # m/min
+        P.append(dict(m=a["d"][:7], v=v, hr=a["hr"], r0=r0, hrr=hrr, cad=cad, gct=a.get("gct"), step=v / cad * 100 if cad else None))
+    if len(P) < 10: return {}, None
+    ref = round(st.median(p["hr"] for p in P) / 5) * 5
+    for p in P:
+        p["ri"] = 0.2 * p["v"] / p["hrr"] + 3.5
+        p["ef"] = p["v"] / p["hr"]
+        p["pref"] = 1000 / (p["v"] * (ref - p["r0"]) / (p["hr"] - p["r0"])) * 60 if ref > p["r0"] + 10 else None   # s/km
+    for k in ("step", "cad", "gct"):
+        Q = [p for p in P if p[k]]
+        if len(Q) < 10: continue
+        mx, my = st.mean(p["v"] for p in Q), st.mean(p[k] for p in Q)
+        b = sum((p["v"] - mx) * (p[k] - my) for p in Q) / sum((p["v"] - mx) ** 2 for p in Q)
+        for p in Q: p[k + "_r"] = p[k] - (my + b * (p["v"] - mx))
+    M = defaultdict(list)
+    for p in P: M[p["m"]].append(p)
+    def ms(k): return [(m, st.median(x[k] for x in L if x.get(k) is not None) if any(x.get(k) is not None for x in L) else None) for m, L in sorted(M.items())]
+    out = {k: ms(k) for k in ("ri", "ef", "pref", "step_r", "cad_r", "gct_r")}
+    out["n"] = [(m, len(L)) for m, L in sorted(M.items())]
+    out["hrmax"] = [(m, hrmax(m)) for m in mkeys]
+    return out, ref
+
 def build(acts, daily, weekly, rng, start, end):
     months = month_keys(start, end)
     by = defaultdict(lambda: defaultdict(list))
@@ -384,6 +438,17 @@ def build(acts, daily, weekly, rng, start, end):
     add("run.gct", "run", "Bodenkontaktzeit", "ms", "month", mser("run", lambda L: wavg(L, "gct")), agg="avg", better="down", dec=0)
     add("run.long", "run", "Längster Lauf", "km", "month", mser("run", lambda L: max((a["dist"] for a in L), default=0) / 1000 or None), agg="max")
     add("run.vo2", "run", "VO2max (Aktivität)", "ml/kg/min", "month", mser("run", lambda L: max((a["vo2"] or 0 for a in L), default=0) or None), agg="last", dec=0)
+    # Laufökonomie und Laufstil (nur aerobe Dauerläufe, siehe run_economy)
+    eco, ref_hr = run_economy(acts, daily)
+    if eco:
+        add("run.ri", "run", "Laufindex", "", "month", eco["ri"], agg="avg", dec=1)
+        add("run.ef", "run", "Effizienzfaktor", "m/min je Schlag", "month", eco["ef"], agg="avg", dec=3)
+        add("run.pref", "run", f"Pace bei {ref_hr} bpm", "min/km", "month", eco["pref"], fmt="pace", agg="avg", better="down", dec=0)
+        add("run.hrmax", "run", "Max-Puls (12 Monate, bereinigt)", "bpm", "month", eco["hrmax"], agg="last", better="none", dec=0)
+        add("run.step_r", "run", "Schrittlänge tempobereinigt", "cm", "month", eco["step_r"], agg="avg", better="none", dec=1)
+        add("run.cad_r", "run", "Kadenz tempobereinigt", "spm", "month", eco["cad_r"], agg="avg", better="none", dec=1)
+        add("run.gct_r", "run", "Bodenkontakt tempobereinigt", "ms", "month", eco["gct_r"], agg="avg", better="down", dec=1)
+        add("run.econ_n", "run", "Dauerläufe für Laufökonomie", "", "month", eco["n"], dec=0)
     # Rad
     add("bike.km", "bike", "Distanz", "km", "month", mser("bike", km))
     add("bike.h", "bike", "Zeit", "h", "month", mser("bike", hrs))
@@ -502,7 +567,7 @@ def build(acts, daily, weekly, rng, start, end):
     groups = [g for g in groups if any(s["group"] == g["id"] for s in S.values())]
     return dict(meta=dict(source="garmin", title="Garmin Dashboard", generated=dt.date.today().isoformat(),
                           generated_at=dt.datetime.now().isoformat(timespec="minutes"),
-                          **{"from": months[0], "to": months[-1]}, activities=len(acts)),
+                          **{"from": months[0], "to": months[-1]}, activities=len(acts), ref_hr=ref_hr),
                 groups=groups, series=S, extra=extra, activities=act_list)
 
 # --------------------------------------------------------------------------- Einzelaktivität
