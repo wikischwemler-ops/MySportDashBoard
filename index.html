@@ -188,6 +188,9 @@ code{font-family:var(--f-mono);font-size:12px;background:var(--soft);padding:1px
 .trk-h .rd{font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--ink);margin-left:auto}
 .trk-h .av{font-family:var(--f-mono);font-size:.88em;color:var(--muted);font-variant-numeric:tabular-nums}
 .trk-c{position:relative;height:var(--trkh,clamp(170px,calc((100vh - 230px) / 3.2),420px));cursor:crosshair;touch-action:pan-y}
+.zrst{position:absolute;top:4px;right:4px;z-index:3;cursor:pointer;font:500 11.5px var(--f-body);padding:3px 8px;border-radius:6px;
+  border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 88%,transparent);color:var(--ink)}
+.zrst:hover{border-color:var(--muted)}.zrst:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 /* Laufkinematik in der Detailansicht */
 .kin{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
 .kin h2{font-family:var(--f-display);font-weight:600;font-size:21px;margin:0}
@@ -345,6 +348,13 @@ function attachPan(c,o){const cv=c.canvas;let st=null;
     if(c._yz&&st.yl!=null){yInit(c);const dvy=dy/st.h*(st.yh-st.yl)*(st.rev?-1:1);clampY(c,st.yl+dvy,st.yh+dvy);}
     o.setX(st.xl-dvx,st.xh-dvx);c.update("none");},true);
   const end=()=>{if(st){st=null;cur();o.after&&o.after();}};cv.addEventListener("pointerup",end,true);cv.addEventListener("pointercancel",end,true);}
+// Knopf „Zoom zurücksetzen“ oben rechts in jedem Diagramm, das gerade gezoomt ist (Diagramme melden das über _isZoomed/_resetZoom)
+Chart.register({id:"zoomReset",afterDraw(c){if(!c._isZoomed)return;const box=c.canvas.parentElement;if(!box)return;
+  let b=box.querySelector(":scope > .zrst");
+  if(!b){if(getComputedStyle(box).position==="static")box.style.position="relative";
+    b=document.createElement("button");b.className="zrst";b.type="button";b.textContent="⟲ Zoom zurücksetzen";b.title="Ganze Kurve zeigen";
+    b.onclick=e=>{e.stopPropagation();c._resetZoom&&c._resetZoom();};box.append(b);}
+  b.hidden=!c._isZoomed();}});
 function wheelZoom(chart){if(chart._wz)return;chart._wz=1;const cv=chart.canvas,f0=chart.options.scales.x.min,f1=chart.options.scales.x.max;
   const set=(lo,hi)=>{const w=Math.min(hi-lo,f1-f0);if(lo<f0){lo=f0;hi=f0+w;}if(hi>f1){hi=f1;lo=f1-w;}chart.options.scales.x.min=lo;chart.options.scales.x.max=hi;chart.update("none");chart._cur&&chart._cur();};
   cv.addEventListener("wheel",ev=>{const x=chart.scales.x,lo=x.min,hi=x.max;
@@ -352,6 +362,7 @@ function wheelZoom(chart){if(chart._wz)return;chart._wz=1;const cv=chart.canvas,
       if(nhi-nlo<(f1-f0)*.04){nlo=lo;nhi=hi;}yZoom(chart,ev.offsetY,f);set(nlo,nhi);}
     else if(ev.shiftKey){ev.preventDefault();const d=(hi-lo)*((ev.deltaY||ev.deltaX)>0?.12:-.12);set(lo+d,hi+d);}},{passive:false});
   cv.addEventListener("dblclick",()=>{resetY(chart);set(f0,f1);});
+  chart._isZoomed=()=>chart.scales.x.max-chart.scales.x.min<(f1-f0)*.999||!!chart._yz;chart._resetZoom=()=>{resetY(chart);set(f0,f1);};
   attachPan(chart,{zoomed:()=>chart.scales.x.max-chart.scales.x.min<(f1-f0)*.999,xr:()=>[chart.scales.x.min,chart.scales.x.max],setX:(lo,hi)=>{const w=hi-lo;if(lo<f0){lo=f0;hi=f0+w;}if(hi>f1){hi=f1;lo=f1-w;}chart.options.scales.x.min=lo;chart.options.scales.x.max=hi;},idle:"default"});}
 function mainChart(canvas,id,ma=optMA[TAB],tr=optTrend[TAB]){
   const s=DATA.series[id],c=col(s.group),p=pts(s);const o=baseOpts();o.scales.y=yAxis(s);
@@ -759,6 +770,7 @@ function buildDetail(a,det){
         y:{reverse:!!cd.pace,...yRange(pts,cd),grid:{color:css("--line")},border:{display:false},ticks:{maxTicksLimit:4,padding:4,callback:v=>fmtC(cd,v),color:css("--muted"),font:{size:tickPx()}},afterFit:s=>{s.width=tickPx()*4.6;}}}};
     const chart=new Chart(el.querySelector("canvas"),{type:"line",data:{datasets:[{data:pts,borderColor:col,backgroundColor:col+"33",fill:k==="elev"?"start":k==="vspeed"?"origin":(cd.pace?"end":"start"),borderWidth:1.4,pointRadius:0,tension:det.swim&&k!=="hr"?0:.15,stepped:det.swim&&k!=="hr"?"before":false,spanGaps:!(det.swim&&k!=="hr")}]},options:o,plugins:[syncPlug]});
     chart._det=true;chart._k=k;chart._cd=cd;chart._pts=pts;chart._raw=raw;ACT.charts.push(chart);
+    chart._isZoomed=()=>!!ACT.zoom||!!chart._yz;chart._resetZoom=()=>{ACT.charts.forEach(resetY);ACT.zoom=null;applyZoom();};
     // Zeiger, Ziehen zum Zoomen
     const cv=el.querySelector("canvas");let drag=null;
     const xv=ev=>{const r=cv.getBoundingClientRect();return chart.scales.x.getValueForPixel(ev.clientX-r.left);};
@@ -849,7 +861,7 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
   const d0=dec[0],d9=dec[dec.length-1],p0=d0.p,p9=d9.p;
   const kc=(l,v0,v9,u,dd)=>`<div class="kpi" style="--c:var(--run);padding:9px 12px"><span class="l">${l}</span><span class="v" style="font-size:19px">${nf(v0,dd)} → ${nf(v9,dd)}<small>${u}</small></span></div>`;
   const sec=h(`<section class="kin"><div class="ph"><h2>Laufkinematik</h2><label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="kintr" ${KIN.tr?"checked":""}> Trendlinien</label></div>
-    <div class="hint">Laufen als fortlaufende Schwingung des Körperschwerpunkts: im Bodenkontakt federt das Bein ein, in der Flugphase hebt sich der Schwerpunkt wieder. Berechnet aus Kadenz, Bodenkontaktzeit, Tempo und vertikaler Bewegung, nur Laufabschnitte (Kadenz ≥ 150). Werte: erstes → letztes Zehntel der Strecke.</div>
+    <div class="hint">Laufen als fortlaufende Schwingung des Körperschwerpunkts: im Bodenkontakt federt das Bein ein, in der Flugphase hebt sich der Schwerpunkt wieder. Berechnet aus Kadenz, Bodenkontaktzeit, Tempo und vertikaler Bewegung, nur Laufabschnitte (Kadenz ≥ 150). Werte: erstes → letztes Zehntel der Strecke. Verläufe über die Distanz: Strg + Mausrad zoomt, danach mit der Hand verschieben.</div>
     <div class="kpis" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${kc("Schrittweite",p0.step*100,p9.step*100,"cm",0)}${kc("Amplitude",(p0.dyc+p0.hfl)*100,(p9.dyc+p9.hfl)*100,"cm",1)}${kc("Kontaktzeit",p0.tc*1000,p9.tc*1000,"ms",0)}${kc("Flugzeit",p0.tf*1000,p9.tf*1000,"ms",0)}${kc("Spitzenbeschl.",p0.F,p9.F,"g",2)}${kc("Steifigkeit tempobereinigt",d0.kres,d9.kres,"kN/m",1)}${kc("Bremskraft-Spitze",d0.Fb,d9.Fb,"×KG",2)}</div>
     <div class="kh">Bewegungswelle: Höhe des Schwerpunkts über drei Schritte (cm) gegen die Strecke (m), je Zehntel der Strecke von Start (blau) bis Ziel (rot)</div>
     <div class="kleg">${dec.map(o=>`<span><i style="background:${kinCol(o.f)}"></i>${o.lab}</span>`).join("")}</div><div class="kc"><canvas></canvas></div>
@@ -875,7 +887,7 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
   const lin=(d,c,x={})=>({data:d,borderColor:c,backgroundColor:c,borderWidth:1.8,pointRadius:0,tension:0,spanGaps:true,...x});
   const opt=(xt,yt,lab,u,dd,dx)=>({responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:"index",intersect:false},
     plugins:{legend:{display:false},tooltip:{filter:i=>!!i.dataset._l,callbacks:{title:i=>nf(i[0].parsed.x,dx)+" "+xt,label:i=>" "+i.dataset._l+": "+nf(i.parsed.y,dd)+" "+u}}},
-    scales:{x:{type:"linear",grid:{color:grid},title:{display:true,text:xt},ticks:{maxTicksLimit:8}},y:{grid:{color:grid},title:{display:!!yt,text:yt},ticks:{maxTicksLimit:5}}}});
+    scales:{x:{type:"linear",grid:{color:grid},title:{display:true,text:xt},ticks:{maxTicksLimit:8,callback:v=>nf(v,v%1?1:0)}},y:{grid:{color:grid},title:{display:!!yt,text:yt},ticks:{maxTicksLimit:5,callback:v=>nf(v,v%1?(Math.abs(v)<1?2:1):0)}}}});
   const mk=(i,ds,o)=>KIN.charts.push(new Chart(cv[i],{type:"line",data:{datasets:ds},options:o}));
   // Bewegungswelle, vertikale Geschwindigkeit und Beschleunigung je Zehntel
   mk(0,dec.map(o=>({...lin(Array.from({length:241},(_,i)=>{const t=i/240*3*o.p.T;return{x:o.p.v*t,y:kinAt(o.p,t).y*100};}),kinCol(o.f)),_l:o.lab})),opt("m","cm","","cm",1,2));
@@ -897,7 +909,8 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
       ds.push({...lin(p,c,x),_l:lab});let t="";
       if(KIN.tr&&!x.borderDash){const tp=trend(p);if(tp.length){ds.push(trd(p,c));t=` (${tp[1].y-tp[0].y>=0?"+":""}${nf(tp[1].y-tp[0].y,dd)} ${u})`;}}
       lg.push(`<span><i style="background:${c}"></i>${lab}${t}</span>`);});
-    sec.querySelector(`.kleg[data-t="${i-3}"]`).innerHTML=lg.join("");mk(i,ds,opt("km",u,"",u,dd,1));};
+    sec.querySelector(`.kleg[data-t="${i-3}"]`).innerHTML=lg.join("");
+    const o=opt("km",u,"",u,dd,1);o.scales.x.min=S[0].km;o.scales.x.max=S[S.length-1].km;mk(i,ds,o);wheelZoom(KIN.charts[KIN.charts.length-1]);};
   const ref={borderDash:[4,4],borderWidth:1.2};
   run(3,[["Spitzenbeschleunigung","F",css("--pred"),{},["Fmin","Fmax"]],["Erwartung","Fx",mut,ref]],"g",2);
   run(4,[["Schrittweite Garmin","stride",css("--bike"),{}],["Erwartung","sx",mut,ref]],"cm",0);
