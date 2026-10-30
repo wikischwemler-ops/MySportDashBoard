@@ -188,6 +188,15 @@ code{font-family:var(--f-mono);font-size:12px;background:var(--soft);padding:1px
 .trk-h .rd{font-family:var(--f-mono);font-variant-numeric:tabular-nums;color:var(--ink);margin-left:auto}
 .trk-h .av{font-family:var(--f-mono);font-size:.88em;color:var(--muted);font-variant-numeric:tabular-nums}
 .trk-c{position:relative;height:var(--trkh,clamp(170px,calc((100vh - 230px) / 3.2),420px));cursor:crosshair;touch-action:pan-y}
+/* Laufkinematik in der Detailansicht */
+.kin{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
+.kin h2{font-family:var(--f-display);font-weight:600;font-size:21px;margin:0}
+.kin .kh{font-size:12.5px;color:var(--muted);margin:14px 0 4px}
+.kin .kc{position:relative;height:clamp(200px,28vh,300px)}
+.kin .kleg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin-bottom:4px}
+.kin .kleg i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
+.kin .kmap{display:flex;gap:8px;align-items:stretch}.kin .kmap canvas{display:block;border-radius:6px}
+.kin .kscale{display:flex;flex-direction:column;justify-content:space-between;font:11px var(--f-mono);color:var(--muted)}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin:12px 0 4px}
 .hint{font-size:.88em;color:var(--muted)}
 .selbar{font-family:var(--f-mono);font-size:12px;color:var(--ink);background:var(--soft);border-radius:6px;padding:5px 9px}
@@ -784,6 +793,99 @@ function buildDetail(a,det){
     </tbody></table></div></section>`));}
   if(!side.children.length)side.append(h(`<div class="empty">Keine Zonen, Strecke oder Runden für diese Aktivität.</div>`));
   applyZoom();
+  drawKin(a,det);
+}
+
+// ---- Laufkinematik: Feder-Masse-Modell (Morin et al. 2005) aus Kadenz, Bodenkontaktzeit, Tempo und vertikaler Bewegung ----
+const KIN={charts:[],tr:null},GRAV=9.81;
+function kinBody(){const b=(DATA.meta||{}).body||{};return{m:b.kg||70,H:(b.cm||175)/100,est:!(b.kg&&b.cm)};}
+// Ein Schritt: Spitzenkraft F (× Körpergewicht) aus Impulserhaltung, Absenkung dyc im Kontakt, Steifigkeiten
+function kinModel(c,tcMs,v,m,L){const T=60/c,tc=tcMs/1000,tf=T-tc;if(tf<=.01)return null;
+  const F=Math.PI/2*(tf/tc+1),dyc=F*GRAV*tc*tc/(Math.PI*Math.PI)-GRAV*tc*tc/8;if(dyc<=0)return null;
+  const dL=L-Math.sqrt(Math.max(L*L-(v*tc/2)**2,1e-6))+dyc;
+  return{T,tc,tf,v,F,dyc,kv:F*m*GRAV/dyc/1000,kl:F*m*GRAV/dL/1000,hfl:GRAV*tf*tf/8,step:v*T};}
+function kinPoints(det){const C=det.ch,D=det.dist,n=det.t.length,{m,H}=kinBody(),L=.53*H,P=[];
+  for(let i=0;i<n;i++){const c=C.cad[i],tc=C.gct[i],v=C.speed[i],d=D[i];
+    if(c==null||tc==null||v==null||d==null||c<150||tc<120||v<1.8)continue;   // nur Laufen, kein Gehen
+    const r=kinModel(c,tc,v,m,L);if(!r)continue;
+    let j=i,k=i;while(j>0&&D[j-1]!=null&&d-D[j-1]<40)j--;while(k<n-1&&D[k+1]!=null&&D[k+1]-d<40)k++;   // Steigung über ±40 m
+    const e=C.elev,dd=D[k]-D[j];r.grade=e&&dd>20&&e[k]!=null&&e[j]!=null?(e[k]-e[j])/dd*100:0;
+    r.d=d;r.vo=C.vo?C.vo[i]:null;r.stride=C.stride?C.stride[i]:null;P.push(r);}
+  return P;}
+// Erwartungswert bei gegebenem Tempo: lineare Regression über die flachen Laufpunkte dieser Aktivität
+function kinRef(P,k){const F=P.filter(p=>Math.abs(p.grade)<2&&p[k]!=null&&p[k]>0),Q=F.length>=30?F:P.filter(p=>p[k]!=null&&p[k]>0),n=Q.length;if(n<3)return()=>null;
+  const mx=Q.reduce((s,p)=>s+p.v,0)/n,my=Q.reduce((s,p)=>s+p[k],0)/n;let a=0,b=0;Q.forEach(p=>{a+=(p.v-mx)*(p[k]-my);b+=(p.v-mx)**2;});const sl=b?a/b:0;return v=>my+sl*(v-mx);}
+const kinAvg=(R,k)=>{const v=R.map(p=>p[k]).filter(x=>x!=null&&x>0);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null;};
+function kinBins(P,N){const D=P[P.length-1].d,B=Array.from({length:N},()=>[]);P.forEach(p=>B[Math.min(N-1,Math.floor(p.d/D*N))].push(p));
+  return B.filter(R=>R.length>=3).map(R=>{const o={km:kinAvg(R,"d")/1000,Fmin:Math.min(...R.map(p=>p.F)),Fmax:Math.max(...R.map(p=>p.F))};
+    ["v","tc","tf","F","dyc","kv","hfl","step","vo","stride"].forEach(k=>o[k]=kinAvg(R,k));o.grade=R.reduce((s,p)=>s+p.grade,0)/R.length;return o;});}
+// Bewegungswelle: Kontakt y''=g(F·sin(πt/tc)−1) ab Landung mit −g·tf/2, danach Flugparabel
+function kinStep(v,tc,tf,F){const T=tc+tf,w=Math.PI/tc;return{v,tc,tf,F,T,w,A:F*GRAV/(w*w),v0:-GRAV*tf/2,
+  dyc:F*GRAV*tc*tc/(Math.PI*Math.PI)-GRAV*tc*tc/8,hfl:GRAV*tf*tf/8,step:v*T};}
+function kinAt(p,t){t=t%p.T;if(t<p.tc){const s=Math.sin(p.w*t),c=Math.cos(p.w*t);
+    return{y:-p.A*s+(p.A*p.w+p.v0)*t-GRAV*t*t/2,vz:-p.A*p.w*c+(p.A*p.w+p.v0)-GRAV*t,a:p.F*s-1};}
+  const u=t-p.tc;return{y:(GRAV*p.tf/2)*u-GRAV*u*u/2,vz:GRAV*p.tf/2-GRAV*u,a:-1};}
+const kinCol=f=>`hsl(${Math.round(215-f*205)},72%,52%)`;
+function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
+  const C=det.ch||{},body=document.getElementById("dbody");if(body)body.querySelectorAll(".kin").forEach(e=>e.remove());
+  if(!body||a.sp!=="run"||!C.cad||!C.gct||!C.speed||!det.dist)return;
+  const P=kinPoints(det);if(P.length<60)return;
+  if(KIN.tr==null)KIN.tr=TREND;
+  const bd=kinBody(),S=kinBins(P,Math.min(100,Math.max(20,Math.round(P.length/6))));
+  const rF=kinRef(P,"F"),rS=kinRef(P,"stride"),rK=kinRef(P,"kv"),rV=kinRef(P,"vo");
+  S.forEach(s=>{s.Fx=rF(s.v);s.sx=rS(s.v);s.kres=s.kv-rK(s.v);s.vx=rV(s.v);s.hfl100=s.hfl*100;});
+  const dec=[];for(let d=0;d<10;d++){const A=S.slice(Math.floor(d*S.length/10),Math.floor((d+1)*S.length/10));if(!A.length)continue;
+    const m=k=>A.reduce((s,x)=>s+x[k],0)/A.length;dec.push({lab:`km ${nf(A[0].km,0)}–${nf(A[A.length-1].km,0)}`,f:d/9,p:kinStep(m("v"),m("tc"),m("tf"),m("F")),kres:m("kres")});}
+  const d0=dec[0],d9=dec[dec.length-1],p0=d0.p,p9=d9.p;
+  const kc=(l,v0,v9,u,dd)=>`<div class="kpi" style="--c:var(--run);padding:9px 12px"><span class="l">${l}</span><span class="v" style="font-size:19px">${nf(v0,dd)} → ${nf(v9,dd)}<small>${u}</small></span></div>`;
+  const sec=h(`<section class="kin"><div class="ph"><h2>Laufkinematik</h2><label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="kintr" ${KIN.tr?"checked":""}> Trendlinien</label></div>
+    <div class="hint">Laufen als fortlaufende Schwingung des Körperschwerpunkts: im Bodenkontakt federt das Bein ein, in der Flugphase hebt sich der Schwerpunkt wieder. Berechnet aus Kadenz, Bodenkontaktzeit, Tempo und vertikaler Bewegung, nur Laufabschnitte (Kadenz ≥ 150). Werte: erstes → letztes Zehntel der Strecke.</div>
+    <div class="kpis" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${kc("Schrittweite",p0.step*100,p9.step*100,"cm",0)}${kc("Amplitude",(p0.dyc+p0.hfl)*100,(p9.dyc+p9.hfl)*100,"cm",1)}${kc("Kontaktzeit",p0.tc*1000,p9.tc*1000,"ms",0)}${kc("Flugzeit",p0.tf*1000,p9.tf*1000,"ms",0)}${kc("Spitzenbeschl.",p0.F,p9.F,"g",2)}${kc("Steifigkeit tempobereinigt",d0.kres,d9.kres,"kN/m",1)}</div>
+    <div class="kh">Bewegungswelle: Höhe des Schwerpunkts über drei Schritte (cm) gegen die Strecke (m), je Zehntel der Strecke von Start (blau) bis Ziel (rot)</div>
+    <div class="kleg">${dec.map(o=>`<span><i style="background:${kinCol(o.f)}"></i>${o.lab}</span>`).join("")}</div><div class="kc"><canvas></canvas></div>
+    <div class="grid2"><div><div class="kh">Vertikale Geschwindigkeit über einen Schritt (m/s)</div><div class="kc"><canvas></canvas></div></div>
+      <div><div class="kh">Vertikale Beschleunigung über einen Schritt (g)</div><div class="kc"><canvas></canvas></div></div></div>
+    <div class="kh">Kennfeld über die gesamte Distanz: x = km, y = Position im Schritt (Aufsetzen unten, Ende der Flugphase oben), Farbe = Höhe des Schwerpunkts</div>
+    <div class="kmap"><div style="flex:1;min-width:0"><canvas style="width:100%;height:200px"></canvas></div><div class="kscale"><span></span><canvas width="12" height="160" style="width:12px;height:150px"></canvas><span></span></div></div>
+    <div class="grid2"><div><div class="kh">Spitzenbeschleunigung im Bodenkontakt (g) · Band = Spanne · gestrichelt = Erwartung bei diesem Tempo</div><div class="kleg" data-t="0"></div><div class="kc"><canvas></canvas></div></div>
+      <div><div class="kh">Schrittweite (cm) · gestrichelt = Erwartung bei diesem Tempo</div><div class="kleg" data-t="1"></div><div class="kc"><canvas></canvas></div></div>
+      <div><div class="kh">Sprung (cm): vertikale Bewegung (Garmin) und Flughöhe aus der Flugzeit</div><div class="kleg" data-t="2"></div><div class="kc"><canvas></canvas></div></div>
+      <div><div class="kh">Vertikale Steifigkeit tempobereinigt (kN/m): unter null = weicher als bei diesem Tempo üblich, stetig fallend = Ermüdung</div><div class="kleg" data-t="3"></div><div class="kc"><canvas></canvas></div></div></div>
+    <div class="hint" style="margin-top:10px">Sinus-Modell nach Morin et al. (2005) mit ${nf(bd.m,1)} kg und ${nf(bd.H*100,0)} cm${bd.est?" (geschätzt, im Export fehlen Körpermaße)":""}, Beinlänge 0,53 × Größe. Erwartungswerte aus einer Regression über das Tempo auf flachen Abschnitten dieser Aktivität. Kraft und Steifigkeit sind Modellschätzungen; Vergleiche zwischen Abschnitten und Läufen sind belastbarer als die absoluten Werte. Garmin misst die vertikale Bewegung am Rumpf, das Modell beschreibt den Schwerpunkt.</div></section>`);
+  body.append(sec);
+  sec.querySelector("#kintr").onchange=e=>{KIN.tr=e.target.checked;drawKin(a,det);};
+  const cv=[...sec.querySelectorAll(".kc canvas")],grid=css("--line"),mut=css("--muted");
+  const lin=(d,c,x={})=>({data:d,borderColor:c,backgroundColor:c,borderWidth:1.8,pointRadius:0,tension:0,spanGaps:true,...x});
+  const opt=(xt,yt,lab,u,dd,dx)=>({responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:"index",intersect:false},
+    plugins:{legend:{display:false},tooltip:{filter:i=>!!i.dataset._l,callbacks:{title:i=>nf(i[0].parsed.x,dx)+" "+xt,label:i=>" "+i.dataset._l+": "+nf(i.parsed.y,dd)+" "+u}}},
+    scales:{x:{type:"linear",grid:{color:grid},title:{display:true,text:xt},ticks:{maxTicksLimit:8}},y:{grid:{color:grid},title:{display:!!yt,text:yt},ticks:{maxTicksLimit:5}}}});
+  const mk=(i,ds,o)=>KIN.charts.push(new Chart(cv[i],{type:"line",data:{datasets:ds},options:o}));
+  // Bewegungswelle, vertikale Geschwindigkeit und Beschleunigung je Zehntel
+  mk(0,dec.map(o=>({...lin(Array.from({length:241},(_,i)=>{const t=i/240*3*o.p.T;return{x:o.p.v*t,y:kinAt(o.p,t).y*100};}),kinCol(o.f)),_l:o.lab})),opt("m","cm","","cm",1,2));
+  const one=k=>dec.map(o=>({...lin(Array.from({length:101},(_,i)=>{const t=i/100*o.p.T;return{x:t*1000,y:kinAt(o.p,t)[k]};}),kinCol(o.f)),_l:o.lab}));
+  mk(1,one("vz"),opt("ms","m/s","","m/s",2,0));mk(2,one("a"),opt("ms","g","","g",2,0));
+  // Kennfeld
+  const mc=sec.querySelector(".kmap canvas"),W=Math.max(200,Math.round(mc.parentElement.clientWidth)),H=200,NY=48;mc.width=W;mc.height=H;
+  let lo=1e9,hi=-1e9;const G=S.map(s=>{const p=kinStep(s.v,s.tc,s.tf,s.F);return Array.from({length:NY},(_,j)=>{const y=kinAt(p,(j+.5)/NY*p.T).y*100;lo=Math.min(lo,y);hi=Math.max(hi,y);return y;});});
+  const hc=v=>`hsl(${Math.round(240-(v-lo)/(hi-lo)*200)},80%,${30+(v-lo)/(hi-lo)*35}%)`,ctx=mc.getContext("2d"),cw=W/G.length,ch=H/NY;
+  G.forEach((c,i)=>c.forEach((v,j)=>{ctx.fillStyle=hc(v);ctx.fillRect(i*cw,H-(j+1)*ch,Math.ceil(cw)+1,Math.ceil(ch)+1);}));
+  const kmMax=S[S.length-1].km,stp=kmMax>30?10:kmMax>12?5:2;ctx.fillStyle="#fff";ctx.font="11px "+css("--f-mono");
+  for(let k=0;k<=kmMax;k+=stp){const x=k/kmMax*W;ctx.fillRect(x,H-6,1,6);ctx.fillText(k+" km",Math.min(x+3,W-40),H-8);}
+  const sc=sec.querySelector(".kscale canvas").getContext("2d");for(let j=0;j<160;j++){sc.fillStyle=hc(lo+(1-j/160)*(hi-lo));sc.fillRect(0,j,12,1);}
+  const sl=sec.querySelectorAll(".kscale span");sl[0].textContent=nf(hi,1)+" cm";sl[1].textContent=nf(lo,1)+" cm";
+  // Verläufe über die Distanz, optional mit Trendlinie (gestrichelt dick, Änderung Start → Ziel in der Legende)
+  const X=k=>S.filter(s=>s[k]!=null).map(s=>({x:s.km,y:s[k]})),trd=(p,c)=>lin(trend(p),c,{borderDash:[8,4],borderWidth:3});
+  const run=(i,items,u,dd)=>{const ds=[],lg=[];items.forEach(([lab,k,c,x={},band])=>{const p=X(k);if(p.length<3)return;
+      if(band)ds.push(lin(X(band[1]),"transparent",{borderWidth:0}),lin(X(band[0]),"transparent",{borderWidth:0,fill:"-1",backgroundColor:c+"26"}));
+      ds.push({...lin(p,c,x),_l:lab});let t="";
+      if(KIN.tr&&!x.borderDash){const tp=trend(p);if(tp.length){ds.push(trd(p,c));t=` (${tp[1].y-tp[0].y>=0?"+":""}${nf(tp[1].y-tp[0].y,dd)} ${u})`;}}
+      lg.push(`<span><i style="background:${c}"></i>${lab}${t}</span>`);});
+    sec.querySelector(`.kleg[data-t="${i-3}"]`).innerHTML=lg.join("");mk(i,ds,opt("km",u,"",u,dd,1));};
+  const ref={borderDash:[4,4],borderWidth:1.2};
+  run(3,[["Spitzenbeschleunigung","F",css("--pred"),{},["Fmin","Fmax"]],["Erwartung","Fx",mut,ref]],"g",2);
+  run(4,[["Schrittweite Garmin","stride",css("--bike"),{}],["Erwartung","sx",mut,ref]],"cm",0);
+  run(5,[["Vertikale Bewegung","vo",css("--health"),{}],["Erwartung","vx",mut,ref],["Flughöhe","hfl100",css("--fit"),{}]],"cm",1);
+  run(6,[["Abweichung","kres",css("--accent"),{}]],"kN/m",1);
 }
 function yRange(pts,cd){if(!cd.pace||pts.length<20)return{};const v=pts.map(p=>p.y).sort((a,b)=>a-b),q=f=>v[Math.floor(f*(v.length-1))];
   const lo=q(.02),hi=q(.9);return{min:Math.max(0,lo-(hi-lo)*.15),max:hi+(hi-lo)*.25};}

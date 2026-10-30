@@ -24,13 +24,15 @@ Nie ins Repository (steht in `.gitignore`): `.garminconnect/`, `cache/`, `data.*
 
 ## Datenformat (`data.json`)
 
-- `meta {source, title, generated, generated_at, from, to, activities}`
+- `meta {source, title, generated, generated_at, from, to, activities, body {kg, cm}}` (`body` = letzte Wiegung bzw. Profilgewicht und Größe, für die Laufkinematik)
 - `groups [{id, label, key}]`: `all`, `run`, `bike`, `swim`, `other`, `fit`, `health`, `pred` (nur Gruppen mit Daten).
 - `series {"<gruppe>.<name>": {group, label, unit, freq: "month"|"week", fmt: "num"|"pace"|"time"|"status", agg: "sum"|"avg"|"last", better: "up"|"down"|"none", dec, d: [[schlüssel, wert], …]}}`. Neue Kennlinien in `build()` über `add(...)` anlegen.
 - `extra {loadfocus, status}`: Wochenwerte für Load-Fokus und Trainingsstatus.
 - `activities.json`: `{generated_at, activities: [{id, d, time, sp, t, name, km, dur, elev, hr, maxhr, pwr, cal, te, race}]}`.
 
 Vorhandene Kennlinien in `fit`: VO2max Laufen/Rad, Fitnessalter, Ausdauerwert, Hill Score, ATL, CTL, ACWR, Load-Fokus (3), Trainingsstatus, Intensitätsminuten, Laktatschwelle HF/Pace/Leistung. In `health`: Ruhepuls, HRV, Schlafdauer, Schlafwert, Stress, Body Battery, Atemfrequenz, SpO₂, Schritte, Gewicht, Körperfett, Fettmasse, fettfreie Masse, Skelettmuskelmasse, Knochenmasse, Körperwasser, BMI (Index-Waage, Zusammensetzung erst ab Dez. 2024, Gewicht vorher nur 4 manuelle Einträge 2024). In `pred`: Prognosen 5 km, 10 km, HM, Marathon.
+
+**Laufkinematik** (Detailansicht von Läufen, `drawKin` in `index.html`, rein im Browser aus den Detailverläufen berechnet): Feder-Masse-Modell nach Morin et al. (2005) aus Kadenz, Bodenkontaktzeit, Tempo und vertikaler Bewegung; nur Laufpunkte (Kadenz ≥ 150, Kontakt ≥ 120 ms, ≥ 1,8 m/s). Zeigt Bewegungswelle des Körperschwerpunkts je Zehntel der Strecke (Höhe, vertikale Geschwindigkeit und Beschleunigung), Kennfeld über die Distanz, Spitzenbeschleunigung, Schrittweite, Sprung (vertikale Bewegung, Flughöhe g·tf²/8) und tempobereinigte vertikale Steifigkeit, jeweils mit Erwartungswert aus einer Tempo-Regression über flache Abschnitte derselben Aktivität und optionalen Trendlinien. Beinlänge = 0,53 × Größe. Bewusst keine Wurf-/Ball-Metapher: Laufen ist als fortlaufende Schwingung dargestellt. Garmin liefert Verläufe auch sekundengenau (`get_activity_details` mit großem `maxChartSize`), der Export nutzt bisher 2000 Punkte.
 
 Sportzuordnung über `RUN`, `BIKE`, `SWIM` in `garmin_export.py`, alles andere ist „Sonstige“. Ändert sich der Inhalt der Detailverläufe, `DETAIL_VERSION` erhöhen (alte Cache-Dateien werden dann neu geladen).
 

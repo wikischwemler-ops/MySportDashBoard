@@ -620,6 +620,11 @@ def run_export(tokens=None, years=4.0, out=None, full=False, no_health=False, in
         weekly = fetch_weekly(g, start, end, a.full)
         rng = fetch_ranges(g, start, end)
     data = build(acts, daily, weekly, rng, start, end)
+    # Körpermaße für die Laufkinematik (Feder-Masse-Modell): letzte Wiegung, sonst Profilgewicht; Größe aus dem Profil
+    u = (call(g.get_user_profile) or {}).get("userData") or {}
+    w = sorted(rng.get("weight", {}).items())
+    kg = w[-1][1] if w else (u.get("weight") or 0) / 1000
+    data["meta"]["body"] = {"kg": round(kg, 1) if kg else None, "cm": u.get("height")}
     act_list = data.pop("activities")          # Einzelaktivitäten getrennt von den Kennlinien
     out = Path(a.out); out.mkdir(parents=True, exist_ok=True)
     def write(name, var, obj):
