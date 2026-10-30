@@ -803,13 +803,19 @@ function kinBody(){const b=(DATA.meta||{}).body||{};return{m:b.kg||70,H:(b.cm||1
 function kinModel(c,tcMs,v,m,L){const T=60/c,tc=tcMs/1000,tf=T-tc;if(tf<=.01)return null;
   const F=Math.PI/2*(tf/tc+1),dyc=F*GRAV*tc*tc/(Math.PI*Math.PI)-GRAV*tc*tc/8;if(dyc<=0)return null;
   const dL=L-Math.sqrt(Math.max(L*L-(v*tc/2)**2,1e-6))+dyc;
-  return{T,tc,tf,v,F,dyc,kv:F*m*GRAV/dyc/1000,kl:F*m*GRAV/dL/1000,hfl:GRAV*tf*tf/8,step:v*T};}
+  // Horizontal: Kraft entlang des Beins, Fx = Fz·v·(t−tc/2)/L. Extrem von sin(πu)·(u−½) = 0,1664, Fläche einer Hälfte = ½/π − 1/π²
+  const pk=F*.1664*v*tc/L,J0=F*v*tc*tc/L*(.5/Math.PI-1/(Math.PI*Math.PI));
+  return{T,tc,tf,v,F,dyc,kv:F*m*GRAV/dyc/1000,kl:F*m*GRAV/dL/1000,hfl:GRAV*tf*tf/8,step:v*T,pk,J0};}
 function kinPoints(det){const C=det.ch,D=det.dist,n=det.t.length,{m,H}=kinBody(),L=.53*H,P=[];
   for(let i=0;i<n;i++){const c=C.cad[i],tc=C.gct[i],v=C.speed[i],d=D[i];
     if(c==null||tc==null||v==null||d==null||c<150||tc<120||v<1.8)continue;   // nur Laufen, kein Gehen
     const r=kinModel(c,tc,v,m,L);if(!r)continue;
     let j=i,k=i;while(j>0&&D[j-1]!=null&&d-D[j-1]<40)j--;while(k<n-1&&D[k+1]!=null&&D[k+1]-d<40)k++;   // Steigung über ±40 m
     const e=C.elev,dd=D[k]-D[j];r.grade=e&&dd>20&&e[k]!=null&&e[j]!=null?(e[k]-e[j])/dd*100:0;
+    // Gelände und Tempoänderung erzwingen je Schritt den Nettoimpuls m·(g·sinφ + dv/dt)·T: bergab mehr Bremsen, bergauf mehr Abstoßen
+    const ts=det.t[k]-det.t[j],acc=ts>5&&C.speed[k]!=null&&C.speed[j]!=null?(C.speed[k]-C.speed[j])/ts:0;
+    const Jn=Math.max(-1.6*r.J0,Math.min(1.6*r.J0,(Math.sin(Math.atan(r.grade/100))+acc/GRAV)*r.T));
+    r.Jb=r.J0-Jn/2;r.Jp=r.J0+Jn/2;r.Fb=r.pk*r.Jb/r.J0;r.Fp=r.pk*r.Jp/r.J0;
     r.d=d;r.vo=C.vo?C.vo[i]:null;r.stride=C.stride?C.stride[i]:null;P.push(r);}
   return P;}
 // Erwartungswert bei gegebenem Tempo: lineare Regression über die flachen Laufpunkte dieser Aktivität
@@ -818,7 +824,8 @@ function kinRef(P,k){const F=P.filter(p=>Math.abs(p.grade)<2&&p[k]!=null&&p[k]>0
 const kinAvg=(R,k)=>{const v=R.map(p=>p[k]).filter(x=>x!=null&&x>0);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null;};
 function kinBins(P,N){const D=P[P.length-1].d,B=Array.from({length:N},()=>[]);P.forEach(p=>B[Math.min(N-1,Math.floor(p.d/D*N))].push(p));
   return B.filter(R=>R.length>=3).map(R=>{const o={km:kinAvg(R,"d")/1000,Fmin:Math.min(...R.map(p=>p.F)),Fmax:Math.max(...R.map(p=>p.F))};
-    ["v","tc","tf","F","dyc","kv","hfl","step","vo","stride"].forEach(k=>o[k]=kinAvg(R,k));o.grade=R.reduce((s,p)=>s+p.grade,0)/R.length;return o;});}
+    ["v","tc","tf","F","dyc","kv","hfl","step","vo","stride","Fb","Fp","Jb","Jp"].forEach(k=>o[k]=kinAvg(R,k));o.grade=R.reduce((s,p)=>s+p.grade,0)/R.length;
+    o.bs=o.Jb/(o.Jb+o.Jp)*100;return o;});}
 // Bewegungswelle: Kontakt y''=g(F·sin(πt/tc)−1) ab Landung mit −g·tf/2, danach Flugparabel
 function kinStep(v,tc,tf,F){const T=tc+tf,w=Math.PI/tc;return{v,tc,tf,F,T,w,A:F*GRAV/(w*w),v0:-GRAV*tf/2,
   dyc:F*GRAV*tc*tc/(Math.PI*Math.PI)-GRAV*tc*tc/8,hfl:GRAV*tf*tf/8,step:v*T};}
@@ -835,12 +842,15 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
   const rF=kinRef(P,"F"),rS=kinRef(P,"stride"),rK=kinRef(P,"kv"),rV=kinRef(P,"vo");
   S.forEach(s=>{s.Fx=rF(s.v);s.sx=rS(s.v);s.kres=s.kv-rK(s.v);s.vx=rV(s.v);s.hfl100=s.hfl*100;});
   const dec=[];for(let d=0;d<10;d++){const A=S.slice(Math.floor(d*S.length/10),Math.floor((d+1)*S.length/10));if(!A.length)continue;
-    const m=k=>A.reduce((s,x)=>s+x[k],0)/A.length;dec.push({lab:`km ${nf(A[0].km,0)}–${nf(A[A.length-1].km,0)}`,f:d/9,p:kinStep(m("v"),m("tc"),m("tf"),m("F")),kres:m("kres")});}
+    const m=k=>A.reduce((s,x)=>s+x[k],0)/A.length;dec.push({lab:`km ${nf(A[0].km,0)}–${nf(A[A.length-1].km,0)}`,f:d/9,p:kinStep(m("v"),m("tc"),m("tf"),m("F")),kres:m("kres"),Fb:m("Fb")});}
+  // Kraftverlauf je Gelände: Mittel über flache, ansteigende und abfallende Laufpunkte
+  const PH=[["Flach",p=>Math.abs(p.grade)<2,css("--bike")],["Bergauf > 6 %",p=>p.grade>6,css("--run")],["Bergab < −6 %",p=>p.grade<-6,css("--other")]]
+    .map(([l,f,c])=>{const R=P.filter(f);return R.length>20?{l,c,F:kinAvg(R,"F"),Fb:kinAvg(R,"Fb"),Fp:kinAvg(R,"Fp")}:null;}).filter(Boolean);
   const d0=dec[0],d9=dec[dec.length-1],p0=d0.p,p9=d9.p;
   const kc=(l,v0,v9,u,dd)=>`<div class="kpi" style="--c:var(--run);padding:9px 12px"><span class="l">${l}</span><span class="v" style="font-size:19px">${nf(v0,dd)} → ${nf(v9,dd)}<small>${u}</small></span></div>`;
   const sec=h(`<section class="kin"><div class="ph"><h2>Laufkinematik</h2><label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="kintr" ${KIN.tr?"checked":""}> Trendlinien</label></div>
     <div class="hint">Laufen als fortlaufende Schwingung des Körperschwerpunkts: im Bodenkontakt federt das Bein ein, in der Flugphase hebt sich der Schwerpunkt wieder. Berechnet aus Kadenz, Bodenkontaktzeit, Tempo und vertikaler Bewegung, nur Laufabschnitte (Kadenz ≥ 150). Werte: erstes → letztes Zehntel der Strecke.</div>
-    <div class="kpis" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${kc("Schrittweite",p0.step*100,p9.step*100,"cm",0)}${kc("Amplitude",(p0.dyc+p0.hfl)*100,(p9.dyc+p9.hfl)*100,"cm",1)}${kc("Kontaktzeit",p0.tc*1000,p9.tc*1000,"ms",0)}${kc("Flugzeit",p0.tf*1000,p9.tf*1000,"ms",0)}${kc("Spitzenbeschl.",p0.F,p9.F,"g",2)}${kc("Steifigkeit tempobereinigt",d0.kres,d9.kres,"kN/m",1)}</div>
+    <div class="kpis" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${kc("Schrittweite",p0.step*100,p9.step*100,"cm",0)}${kc("Amplitude",(p0.dyc+p0.hfl)*100,(p9.dyc+p9.hfl)*100,"cm",1)}${kc("Kontaktzeit",p0.tc*1000,p9.tc*1000,"ms",0)}${kc("Flugzeit",p0.tf*1000,p9.tf*1000,"ms",0)}${kc("Spitzenbeschl.",p0.F,p9.F,"g",2)}${kc("Steifigkeit tempobereinigt",d0.kres,d9.kres,"kN/m",1)}${kc("Bremskraft-Spitze",d0.Fb,d9.Fb,"×KG",2)}</div>
     <div class="kh">Bewegungswelle: Höhe des Schwerpunkts über drei Schritte (cm) gegen die Strecke (m), je Zehntel der Strecke von Start (blau) bis Ziel (rot)</div>
     <div class="kleg">${dec.map(o=>`<span><i style="background:${kinCol(o.f)}"></i>${o.lab}</span>`).join("")}</div><div class="kc"><canvas></canvas></div>
     <div class="grid2"><div><div class="kh">Vertikale Geschwindigkeit über einen Schritt (m/s)</div><div class="kc"><canvas></canvas></div></div>
@@ -851,6 +861,13 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
       <div><div class="kh">Schrittweite (cm) · gestrichelt = Erwartung bei diesem Tempo</div><div class="kleg" data-t="1"></div><div class="kc"><canvas></canvas></div></div>
       <div><div class="kh">Sprung (cm): vertikale Bewegung (Garmin) und Flughöhe aus der Flugzeit</div><div class="kleg" data-t="2"></div><div class="kc"><canvas></canvas></div></div>
       <div><div class="kh">Vertikale Steifigkeit tempobereinigt (kN/m): unter null = weicher als bei diesem Tempo üblich, stetig fallend = Ermüdung</div><div class="kleg" data-t="3"></div><div class="kc"><canvas></canvas></div></div></div>
+    <h3 class="kh" style="font:600 16px var(--f-display);color:var(--ink);margin-top:20px">Brems- und Abstoßkräfte</h3>
+    <div class="hint">Im Bodenkontakt wirkt die Kraft entlang des Beins: beim Aufsetzen steht der Fuß vor dir und der Boden bremst dich ab, beim Abstoßen steht er hinter dir und schiebt dich nach vorne. Bergab verschiebt sich das zum Bremsen, bergauf zum Abstoßen. Kräfte als Vielfaches des Körpergewichts (×KG).</div>
+    <div class="kleg" style="margin-top:6px">${PH.map(o=>`<span><i style="background:${o.c}"></i>${o.l}: Bremsen ${nf(o.Fb,2)}, Abstoßen ${nf(o.Fp,2)} ×KG</span>`).join("")}</div>
+    <div class="grid2"><div><div class="kh">Vertikale Kraft in einem Schritt (×KG) über den Bodenkontakt (%)</div><div class="kc"><canvas></canvas></div></div>
+      <div><div class="kh">Horizontale Kraft in einem Schritt (×KG): negativ = Bremsen, positiv = Abstoßen</div><div class="kc"><canvas></canvas></div></div>
+      <div><div class="kh">Brems- und Abstoßkraft-Spitzen über die Distanz (×KG)</div><div class="kleg" data-t="6"></div><div class="kc"><canvas></canvas></div></div>
+      <div><div class="kh">Bremsanteil am horizontalen Impuls (%): 50 = ausgeglichen, darüber = mehr Bremsen als Abstoßen</div><div class="kleg" data-t="7"></div><div class="kc"><canvas></canvas></div></div></div>
     <div class="hint" style="margin-top:10px">Sinus-Modell nach Morin et al. (2005) mit ${nf(bd.m,1)} kg und ${nf(bd.H*100,0)} cm${bd.est?" (geschätzt, im Export fehlen Körpermaße)":""}, Beinlänge 0,53 × Größe. Erwartungswerte aus einer Regression über das Tempo auf flachen Abschnitten dieser Aktivität. Kraft und Steifigkeit sind Modellschätzungen; Vergleiche zwischen Abschnitten und Läufen sind belastbarer als die absoluten Werte. Garmin misst die vertikale Bewegung am Rumpf, das Modell beschreibt den Schwerpunkt.</div></section>`);
   body.append(sec);
   sec.querySelector("#kintr").onchange=e=>{KIN.tr=e.target.checked;drawKin(a,det);};
@@ -886,6 +903,12 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
   run(4,[["Schrittweite Garmin","stride",css("--bike"),{}],["Erwartung","sx",mut,ref]],"cm",0);
   run(5,[["Vertikale Bewegung","vo",css("--health"),{}],["Erwartung","vx",mut,ref],["Flughöhe","hfl100",css("--fit"),{}]],"cm",1);
   run(6,[["Abweichung","kres",css("--accent"),{}]],"kN/m",1);
+  // Kraftverlauf in einem Schritt: Fz als Halbsinus, Fx-Grundform sin(πu)·(u−½), Bremshälfte auf −Fb, Abstoßhälfte auf +Fp skaliert
+  const U=Array.from({length:61},(_,i)=>i/60),fxs=u=>Math.sin(Math.PI*u)*(u-.5)/.1664;
+  mk(7,PH.map(o=>({...lin(U.map(u=>({x:u*100,y:o.F*Math.sin(Math.PI*u)})),o.c),_l:o.l})),opt("% Kontakt","×KG","","×KG",2,0));
+  mk(8,PH.map(o=>({...lin(U.map(u=>({x:u*100,y:fxs(u)*(u<.5?o.Fb:o.Fp)})),o.c),_l:o.l})),opt("% Kontakt","×KG","","×KG",2,0));
+  run(9,[["Bremsen","Fb",css("--bad"),{}],["Abstoßen","Fp",css("--good"),{}]],"×KG",2);
+  run(10,[["Bremsanteil","bs",css("--bad"),{}]],"%",1);
 }
 function yRange(pts,cd){if(!cd.pace||pts.length<20)return{};const v=pts.map(p=>p.y).sort((a,b)=>a-b),q=f=>v[Math.floor(f*(v.length-1))];
   const lo=q(.02),hi=q(.9);return{min:Math.max(0,lo-(hi-lo)*.15),max:hi+(hi-lo)*.25};}
