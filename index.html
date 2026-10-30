@@ -69,6 +69,7 @@ nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line
 .chartbox{position:relative;height:clamp(320px,52vh,720px);width:100%}
 .chartbox.sm{height:270px}
 .chartbox.xs{height:200px}
+tr.grp td{border-top:2px solid var(--line)}
 .ro-sum{font-size:14px;padding:10px 12px;border-radius:8px;background:color-mix(in srgb,var(--run) 9%,transparent);border-left:3px solid var(--run);margin-bottom:12px}
 .ro-t td,.ro-t th{vertical-align:middle}.ro-t small{color:var(--muted);font-weight:400;font-size:10.5px}
 .ro-bar{display:inline-block;width:80px;height:7px;border-radius:4px;background:var(--soft);vertical-align:middle;overflow:hidden}
@@ -482,13 +483,14 @@ function renderOverview(view){
 
   // Jahrestabelle
   const yrs=[...new Set(DATA.series["run.km"].d.map(p=>p[0].slice(0,4)))];
-  const rows=[["run.km","Laufen","km"],["bike.km","Rad","km"],["swim.km","Schwimmen","km"],["run.elev","Lauf-Höhenmeter","m"],["bike.elev","Rad-Höhenmeter","m"],["other.h","Sonstige","h"]].filter(r=>DATA.series[r[0]]);
+  // gruppiert je Sportart: Laufen, Rad, Schwimmen, Sonstige; Einheit in eckigen Klammern
+  const rows=[["run.km","Laufen","km"],["run.elev","Lauf-Höhenmeter","m"],["bike.km","Rad","km"],["bike.elev","Rad-Höhenmeter","m"],["swim.km","Schwimmen","km"],["other.h","Sonstige","h"]].filter(r=>DATA.series[r[0]]);
   const sumY=(id,y)=>DATA.series[id].d.filter(p=>p[0].startsWith(y)).reduce((a,p)=>a+(p[1]||0),0);
   const tot=y=>["run.h","bike.h","swim.h","other.h"].filter(i=>DATA.series[i]).reduce((a,i)=>a+sumY(i,y),0);
   view.append(h(`<section class="panel"><div class="ph"><h2>Jahresübersicht</h2><span class="note">Kalenderjahre, laufendes Jahr bis heute</span></div><div class="tblwrap"><table>
     <thead><tr><th>Kennzahl</th>${yrs.map(y=>`<th>${y}</th>`).join("")}</tr></thead><tbody>
-    ${rows.map(([id,l,u])=>`<tr><td style="font-family:var(--f-body)"><span style="color:${col(DATA.series[id].group)}">●</span> ${l} <span style="color:var(--muted)">${u}</span></td>${yrs.map(y=>`<td>${nf(sumY(id,y),0)}</td>`).join("")}</tr>`).join("")}
-    <tr><td style="font-family:var(--f-body);font-weight:600">Trainingszeit gesamt <span style="color:var(--muted)">h</span></td>${yrs.map(y=>`<td style="font-weight:600">${nf(tot(y),0)}</td>`).join("")}</tr>
+    ${rows.map(([id,l,u],i)=>`<tr${i&&DATA.series[rows[i-1][0]].group!==DATA.series[id].group?' class="grp"':""}><td style="font-family:var(--f-body)"><span style="color:${col(DATA.series[id].group)}">●</span> ${l} <span style="color:var(--muted)">[${u}]</span></td>${yrs.map(y=>`<td>${nf(sumY(id,y),0)}</td>`).join("")}</tr>`).join("")}
+    <tr class="grp"><td style="font-family:var(--f-body);font-weight:600">Trainingszeit gesamt <span style="color:var(--muted)">[h]</span></td>${yrs.map(y=>`<td style="font-weight:600">${nf(tot(y),0)}</td>`).join("")}</tr>
     </tbody></table></div></section>`));
 
   const g2=h(`<div class="grid2"></div>`);view.append(g2);
