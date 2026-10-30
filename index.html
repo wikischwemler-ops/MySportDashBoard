@@ -884,7 +884,7 @@ const isLocal=()=>location.protocol.startsWith("http")&&/^(127\.0\.0\.1|localhos
 async function getDetail(a){
   if((DATA.meta||{}).source==="demo")return synthDetail(a);
   if(ENC){try{return await fetchEnc("details/"+a.id+".enc");}catch(e){
-    throw new Error(e.message==="404"?"Die Verläufe dieser Aktivität sind noch nicht synchronisiert. Der nächtliche Abgleich lädt sie nach (bis zu 250 Aktivitäten pro Nacht, neueste zuerst).":"Verläufe konnten nicht geladen werden: "+e.message);}}
+    throw new Error(e.message==="404"?"Die Verläufe dieser Aktivität sind noch nicht synchronisiert. Der nächste Abgleich (alle 2 Stunden) lädt sie nach (bis zu 250 Aktivitäten pro Lauf, neueste zuerst).":"Verläufe konnten nicht geladen werden: "+e.message);}}
   if(isLocal()){let j;try{const r=await fetch("/api/activity/"+a.id);j=await r.json();}catch(e){throw new Error("Das Programm antwortet nicht. Läuft das Konsolenfenster von „Dashboard_starten.bat“ noch?");}
     if(j.error)throw new Error(j.error);return j;}
   throw new Error("Die Verläufe einer Aktivität lädt das Programm direkt bei Garmin. Öffne das Dashboard dafür über „Dashboard_starten.bat“.");

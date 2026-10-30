@@ -8,7 +8,7 @@ Es läuft auf zwei Arten:
 | | Wo | Daten |
 |---|---|---|
 | **Zuhause** | `Dashboard_starten.bat` → `http://127.0.0.1:8765` | direkt von Garmin, lokal im Ordner |
-| **Unterwegs** | GitHub Pages, z. B. `https://<dein-github-name>.github.io/MySportDashBoard/` | jede Nacht um 0 Uhr vom Workflow geholt, **mit deinem Passwort verschlüsselt** |
+| **Unterwegs** | GitHub Pages, z. B. `https://<dein-github-name>.github.io/MySportDashBoard/` | alle 2 Stunden (ca. 6 bis 0 Uhr) vom Workflow geholt, **mit deinem Passwort verschlüsselt** |
 
 ---
 
@@ -68,7 +68,7 @@ Die Adresse steht nach dem Lauf unter **Settings → Pages**. Passwort eingeben,
 | `tools/build_pages.py` | Baut im Workflow die verschlüsselte Pages-Seite |
 | `tools/schedule_gate.py` | Sorgt für 0 Uhr deutsche Zeit trotz UTC-Zeitplan |
 | `tools/garmin_tokens_fuer_github.bat` | Legt deine Tokens als Secret-Text in die Zwischenablage |
-| `.github/workflows/garmin-sync.yml` | Der nächtliche Workflow |
+| `.github/workflows/garmin-sync.yml` | Der Workflow (alle 2 Stunden) |
 | `LIESMICH.md` | Anleitung für die lokale Nutzung |
 
 Hinweis: Garmin bietet keine offizielle Schnittstelle für Privatnutzer. Falls Garmin Anfragen aus GitHub-Rechenzentren blockiert, schlägt der Workflow mit einem Anmeldefehler fehl. Zuhause funktioniert das Dashboard davon unabhängig weiter.
