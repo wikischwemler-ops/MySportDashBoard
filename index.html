@@ -681,12 +681,12 @@ function synthDetail(a){
 
 // ---- Kanäle ----
 const CHN=[["hr","Herzfrequenz","--hrc"],["speed",null,"SPORT"],["gap","Steigungsangepasste Pace","--pred"],["elev","Höhe","--health"],["pwr","Leistung","--fit"],
-  ["cad",null,"--other"],["gct","Bodenkontaktzeit","--swim"],["vo","Vertikale Bewegung","--bike"],["vr","Vertikales Verhältnis","--pred"],["stride","Schrittlänge","--fit"],
+  ["cad",null,"--other"],["gct","Bodenkontaktzeit","--swim"],["vo","Vertikale Bewegung","--bike"],["vr","Vertikales Verhältnis","--pred"],["stride","Schrittlänge","--fit"],["gcb","Bodenkontaktzeit-Balance (links)","--run"],["vspeed","Vertikale Geschwindigkeit","--health"],
   ["resp","Atemfrequenz","--health"],["perf","Leistungszustand","--accent"],["stamina","Ausdauer (Stamina)","--other"],["bb","Body Battery","--health"],
   ["srate","Zugfrequenz","--bike"],["swolf","SWOLF","--other"],["strokes","Züge pro Bahn","--fit"],["temp","Temperatur","--muted"]];
 function chanDef(k,sp){
   const pace=sp==="run"||sp==="other";
-  const base={hr:{u:"bpm",d:0},elev:{u:"m",d:0},pwr:{u:"W",d:0},gct:{u:"ms",d:0},vo:{u:"cm",d:1},vr:{u:"%",d:1},stride:{u:"cm",d:0},resp:{u:"/min",d:0},perf:{u:"",d:0},
+  const base={hr:{u:"bpm",d:0},elev:{u:"m",d:0},pwr:{u:"W",d:0},gct:{u:"ms",d:0},vo:{u:"cm",d:1},vr:{u:"%",d:1},stride:{u:"cm",d:0},gcb:{u:"%",d:1},vspeed:{u:"m/min",d:0,conv:v=>v*60},resp:{u:"/min",d:0},perf:{u:"",d:0},
     stamina:{u:"%",d:0},bb:{u:"",d:0},srate:{u:"Züge/min",d:0},swolf:{u:"",d:0},strokes:{u:"",d:0},temp:{u:"°C",d:1},cad:{u:sp==="bike"?"rpm":sp==="swim"?"Züge/min":"spm",d:0}}[k];
   if(k==="speed"||k==="gap"){
     if(sp==="bike")return{u:"km/h",d:1,conv:v=>v>0.3?v*3.6:null,label:k==="gap"?"Steigungsangepasstes Tempo":"Tempo"};
@@ -748,7 +748,7 @@ function buildDetail(a,det){
       plugins:{legend:{display:false},tooltip:{enabled:false}},layout:{padding:{right:4}},
       scales:{x:{type:"linear",min:ACT.zoom?ACT.zoom[0]:xMin,max:ACT.zoom?ACT.zoom[1]:xMax,grid:{color:css("--line"),drawTicks:false},border:{display:false},ticks:{maxTicksLimit:7,padding:4,callback:v=>xFmt(v),color:css("--muted"),font:{size:tickPx()}}},
         y:{reverse:!!cd.pace,...yRange(pts,cd),grid:{color:css("--line")},border:{display:false},ticks:{maxTicksLimit:4,padding:4,callback:v=>fmtC(cd,v),color:css("--muted"),font:{size:tickPx()}},afterFit:s=>{s.width=tickPx()*4.6;}}}};
-    const chart=new Chart(el.querySelector("canvas"),{type:"line",data:{datasets:[{data:pts,borderColor:col,backgroundColor:col+"33",fill:k==="elev"?"start":(cd.pace?"end":"start"),borderWidth:1.4,pointRadius:0,tension:det.swim&&k!=="hr"?0:.15,stepped:det.swim&&k!=="hr"?"before":false,spanGaps:!(det.swim&&k!=="hr")}]},options:o,plugins:[syncPlug]});
+    const chart=new Chart(el.querySelector("canvas"),{type:"line",data:{datasets:[{data:pts,borderColor:col,backgroundColor:col+"33",fill:k==="elev"?"start":k==="vspeed"?"origin":(cd.pace?"end":"start"),borderWidth:1.4,pointRadius:0,tension:det.swim&&k!=="hr"?0:.15,stepped:det.swim&&k!=="hr"?"before":false,spanGaps:!(det.swim&&k!=="hr")}]},options:o,plugins:[syncPlug]});
     chart._det=true;chart._k=k;chart._cd=cd;chart._pts=pts;chart._raw=raw;ACT.charts.push(chart);
     // Zeiger, Ziehen zum Zoomen
     const cv=el.querySelector("canvas");let drag=null;

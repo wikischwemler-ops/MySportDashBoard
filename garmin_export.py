@@ -506,7 +506,7 @@ def build(acts, daily, weekly, rng, start, end):
                 groups=groups, series=S, extra=extra, activities=act_list)
 
 # --------------------------------------------------------------------------- Einzelaktivität
-DETAIL_VERSION = 2   # erhöhen, wenn sich der Inhalt ändert → alte Cache-Dateien werden neu geladen
+DETAIL_VERSION = 3   # erhöhen, wenn sich der Inhalt ändert → alte Cache-Dateien werden neu geladen
 
 def first(d, *keys):
     for k in keys:
@@ -551,7 +551,7 @@ METRICS = {  # Garmin-Schlüssel → Kurzname
     "directHeartRate": "hr", "directSpeed": "speed", "directGradeAdjustedSpeed": "gap", "directElevation": "elev",
     "directDoubleCadence": "cad", "directRunCadence": "cad1", "directBikeCadence": "cad", "directFractionalCadence": None,
     "directPower": "pwr", "directGroundContactTime": "gct", "directVerticalOscillation": "vo", "directVerticalRatio": "vr",
-    "directStrideLength": "stride", "directGroundContactBalanceLeft": "gcb", "directAirTemperature": "temp",
+    "directStrideLength": "stride", "directGroundContactBalanceLeft": "gcb", "directVerticalSpeed": "vspeed", "directAirTemperature": "temp",
     "directRespirationRate": "resp", "directPerformanceCondition": "perf", "directBodyBattery": "bb",
     "directStamina": "stamina", "directPotentialStamina": None, "directLeftPedalSmoothness": None,
     "directSwimStroke": "strokes", "directStrokeRate": "srate", "directSwolf": "swolf",
