@@ -82,7 +82,9 @@ nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line
 .ro-c h3{font-size:14.5px;font-weight:600;margin:0}.ro-c .ph{margin-bottom:2px;align-items:flex-start}
 .ro-c .right{display:flex;gap:10px;align-items:center}
 .ro-arr{display:inline-flex;flex-direction:column;align-items:center;line-height:1.1;color:var(--muted);font-family:var(--f-mono);font-variant-numeric:tabular-nums}
-.ro-arr svg{width:30px;height:30px}.ro-arr.flat svg{width:24px;height:24px}
+.ro-arr svg{width:19px;height:19px}.ro-arr.flat svg{width:17px;height:17px}
+#bigt .ro-arr{margin-left:14px;vertical-align:middle}
+#bigt .ro-zb{font:400 12px var(--f-body);color:var(--muted);margin-left:12px}
 .ro-arr b{font-size:14px;font-weight:600}.ro-arr small{font-size:9.5px;opacity:.8}
 .ro-arr.flat{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:0 4px;max-width:90px}
 .ro-arr.flat small{flex-basis:100%;text-align:center}
@@ -522,6 +524,8 @@ function roEval(s){
   const T=win(last-365*D,last),k=T.length>=4?(()=>{const n=T.length,mx=T.reduce((a,p)=>a+p.x,0)/n,my=T.reduce((a,p)=>a+p.y,0)/n;let u=0,v=0;T.forEach(p=>{u+=(p.x-mx)*(p.y-my);v+=(p.x-mx)**2;});return u/v;})():null;
   const yr=k==null?null:k*365*D,z=yr==null?0:sg*yr/sd,gap=best==null||s.better==="none"?0:sg*(best-cur)/sd;
   return{P,out,cur,ago,best,bestAt,yr,z,gap,sd,T,k};}
+const ROX={};   // Trendpfeil, Zielbereich und Band-Plugin je Kennlinie für die Vergrößerung
+Chart.register({id:"roBandBig",beforeDatasetsDraw(c){if(c._roBand)c._roBand.beforeDatasetsDraw(c);}});
 function renderRunOpt(view){
   const L=RO.filter(([id])=>DATA.series[id]).map(([id,l,info,bt])=>{const s=bt?{...DATA.series[id],better:bt}:DATA.series[id];return{id,s,l:l||s.label,info,e:roEval(s)};}).filter(o=>o.e);
   if(!L.length)return;
@@ -554,6 +558,7 @@ function renderRunOpt(view){
   const bandPlugin=o=>({id:"roBand",beforeDatasetsDraw(c){if(!o.band)return;const y=c.scales.y,a=c.chartArea,p1=y.getPixelForValue(o.band[0]),p2=y.getPixelForValue(o.band[1]);
     const t=Math.max(a.top,Math.min(p1,p2)),b=Math.min(a.bottom,Math.max(p1,p2));if(b<=t)return;const x=c.ctx;x.save();x.fillStyle=css("--good")+"26";x.fillRect(a.left,t,a.right-a.left,b-t);
     x.strokeStyle=css("--good")+"88";x.setLineDash([3,3]);x.lineWidth=1;[t,b].forEach(yy=>{if(yy>a.top&&yy<a.bottom){x.beginPath();x.moveTo(a.left,yy);x.lineTo(a.right,yy);x.stroke();}});x.restore();}});
+  L.forEach(o=>{ROX[o.id]={arrow:arrow(o),band:o.band,zb:o.band?`Zielbereich ${fmt(o.s,Math.min(...o.band))} – ${fmt(o.s,Math.max(...o.band))} · aktuell ${fmt(o.s,o.e.cur)}`:"",plugin:bandPlugin(o)};});
   L.forEach(o=>{const s=o.s,[vc]=verdict(o),b=h(`<div class="ro-c"><div class="ph"><h3>${o.l}</h3><span class="right">${arrow(o)}<span class="note">${unitOf(s)} ${bigBtn("series:"+o.id)}</span></span></div><p class="ro-i">${o.info}</p>${o.band?`<div class="ro-band"><i></i>Zielbereich ${fmt(s,Math.min(...o.band))} – ${fmt(s,Math.max(...o.band))}${unitOf(s)?" "+unitOf(s):""} · aktuell ${fmt(s,o.e.cur)}${inBand(o)?" ✓ im Ziel":""}</div>`:""}<div class="chartbox xs"><canvas></canvas></div></div>`);g.append(b);
     const p=pts(s).filter(q=>!o.e.out.some(x=>x.x===q.x)),ma=s.freq==="week"?12:3,o2=baseOpts();o2.scales.y=yAxis(s);o2.plugins.legend={display:false};
     const tc=css(vc==="good"?"--good":vc==="bad"?"--bad":"--muted"),T=o.e.T.length>=4?[o.e.T[0],o.e.T[o.e.T.length-1]].map(q=>({x:q.x,y:o.e.T.reduce((a,p)=>a+p.y,0)/o.e.T.length+o.e.k*(q.x-o.e.T.reduce((a,p)=>a+p.x,0)/o.e.T.length)})):[];
@@ -687,7 +692,10 @@ function drawBig(){if(!BIG||!DATA)return;bigCharts.forEach(c=>c.destroy());bigCh
   else{const id=BIG.slice(7),s=DATA.series[id];if(!s){charts=saved;return closeBig();}ser=true;
     title=((DATA.groups.find(g=>g.id===s.group)||{}).label||"")+" · "+s.label;note=unitOf(s);mainChart(cv,id,BIGO.ma,BIGO.tr);}
   bigCharts=charts;charts=saved;bigCharts.forEach(wheelZoom);
-  document.getElementById("bigt").innerHTML=`${title}<span class="note">${note}</span>`;
+  const rx=ser&&ROX[BIG.slice(7)];
+  if(rx&&rx.band&&bigCharts[0]){const c=bigCharts[0],lo=Math.min(...rx.band),hi=Math.max(...rx.band),y=c.options.scales.y;c._roBand=rx.plugin;
+    y.suggestedMin=Math.min(y.suggestedMin??lo,lo-(hi-lo)*.15);y.suggestedMax=Math.max(y.suggestedMax??hi,hi+(hi-lo)*.15);c.update("none");}
+  document.getElementById("bigt").innerHTML=`${title}<span class="note">${note}</span>${rx?rx.arrow+(rx.zb?`<span class="ro-zb">${rx.zb}</span>`:""):""}`;
   const op=document.getElementById("bigopts");
   op.innerHTML=`<div class="seg" role="group" aria-label="Zeitraum">${[[3,"3 M"],[6,"6 M"],[12,"1 J"],[24,"2 J"],[48,"4 J"],[0,"Alle"]].map(([m,l])=>`<button data-bm="${m}" aria-pressed="${RANGE===m}">${l}</button>`).join("")}</div>`+
     (ser?`<label><input type="checkbox" id="big-ma" ${BIGO.ma?"checked":""}> gleitender Durchschnitt</label><label><input type="checkbox" id="big-tr" ${BIGO.tr?"checked":""}> Trendlinie</label>`:"");
