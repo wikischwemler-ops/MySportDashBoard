@@ -309,6 +309,16 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 .tp-agenda{display:none}
 @media (max-width:860px){.tp-week{grid-template-columns:minmax(0,1fr)}.tp-day{min-height:0}}
 @media (max-width:760px){.pcal{display:none}.tp-agenda{display:flex}.steps li{grid-template-columns:6.4em 5.6em minmax(0,1fr)}}
+.cs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,270px),1fr));gap:12px}
+.cs{border:1px solid var(--line);border-top:4px solid var(--c,var(--muted));border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:9px;min-width:0}
+.cs.bad{--c:var(--bad)}.cs.warn{--c:var(--fit)}.cs.good{--c:var(--good)}
+.cs-h{display:flex;gap:10px;align-items:flex-start}.cs-h>div{flex:1;min-width:0}.cs-h h3{margin:0;font-size:15px;font-weight:600;line-height:1.25}
+.cs-n{flex-shrink:0;width:24px;height:24px;border-radius:50%;background:var(--c);color:var(--panel);display:grid;place-items:center;font:600 13px var(--f-mono)}
+.cs-a{font:500 11px var(--f-mono);color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.cs-v{display:grid;grid-template-columns:1fr 1.4fr;gap:8px}.cs-v small{display:block;font-size:11px;color:var(--muted)}.cs-v b{font:600 19px var(--f-mono)}.cs-v span{font-size:11.5px;color:var(--muted);margin-left:4px}
+.cs-bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden}.cs-bar i{display:block;height:100%;background:var(--c)}
+.cs p{margin:0;font-size:13px;line-height:1.45}
+.ro-c.cs-bad{border-color:color-mix(in srgb,var(--bad) 45%,var(--line))}.ro-c.cs-good{border-color:color-mix(in srgb,var(--good) 45%,var(--line))}
 </style>
 
 <div class="wrap" id="app">
@@ -618,6 +628,77 @@ function renderRunOpt(view){
     if(T.length)ds.push({data:T,borderColor:tc,borderWidth:3,borderDash:[7,4],pointRadius:0,fill:false,tension:0,_noTrend:true,label:"Trend 12 Monate",tooltip:{callbacks:{label:()=>" Trend 12 Monate: "+yrTxt(o)}}});
     if(o.band){const lo=Math.min(...o.band),hi=Math.max(...o.band),pad=(hi-lo)*.15||o.e.sd*.1;o2.scales.y.suggestedMin=lo-pad;o2.scales.y.suggestedMax=hi+pad;}
     charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:ds},options:o2,plugins:[bandPlugin(o)]}));});
+}
+
+// ---- Reiter Laufoptimum: Stellschrauben (Ampel, Ziel, Maßnahme) und Ziel-Kennlinien mit Zielband ----
+// Ziel je Kennlinie: eigenes bestes Viertel (Quartil bis Bestwert) bzw. Fachreferenz, wo es eine gibt (Garmin-Skala vertikales Verhältnis,
+// Kadenz +5–10 % nach Heiderscheit et al. 2011). Ampel nach Abstand des 90-Tage-Mittels zum Zielband in Standardabweichungen (σ).
+const qtlG=(a,q)=>{const b=[...a].sort((x,y)=>x-y),i=(b.length-1)*q,lo=Math.floor(i);return b[lo]+(b[Math.ceil(i)]-b[lo])*(i-lo);};
+function bandPlug(band,lineAt){return{id:"coachBand",beforeDatasetsDraw(c){if(!band)return;const y=c.scales.y,a=c.chartArea,p1=y.getPixelForValue(band[0]),p2=y.getPixelForValue(band[1]);
+  const t=Math.max(a.top,Math.min(p1,p2)),b=Math.min(a.bottom,Math.max(p1,p2)),x=c.ctx;x.save();
+  if(b>t){x.fillStyle=css("--good")+"26";x.fillRect(a.left,t,a.right-a.left,b-t);}
+  if(lineAt!=null){const yy=y.getPixelForValue(lineAt);if(yy>a.top&&yy<a.bottom){x.strokeStyle=css("--good");x.lineWidth=2;x.setLineDash([8,5]);x.beginPath();x.moveTo(a.left,yy);x.lineTo(a.right,yy);x.stroke();
+    x.fillStyle=css("--good");x.font="600 11px "+css("--f-mono");x.fillText("Ziel",a.right-30,yy-4);}}
+  x.restore();}};}
+function renderCoach(view){
+  const S=DATA.series,ok=id=>S[id]&&S[id].d.some(p=>p[1]!=null);
+  const hm=(S["run.hrmax"]?.d||[]).filter(p=>p[1]).pop()?.[1],lt=(S["fit.lthr"]?.d||[]).filter(p=>p[1]).pop()?.[1],ref=(DATA.meta||{}).ref_hr;
+  const z=(a,b)=>`${Math.round(a)}–${Math.round(b)} bpm`;
+  // [id, Titel, Bereich, Ziel-Art, Maßnahme]
+  const M=[
+    ["run.pref",null,"Ausdauer","own",`Mehr aerober Umfang: 2–3 lockere Läufe pro Woche in Z2 130–148 bpm und ein langer Lauf von 90–150 min in Z2. Die Pace bei ${ref||"fester"} bpm wird mit Volumen schneller.`],
+    ["run.ri","Laufindex","Ausdauer","own","Steigt mit aerober Grundlage und besserer Ökonomie: Z2-Umfang halten, Technikarbeit (siehe unten) senkt den Sauerstoffbedarf."],
+    ["run.ef","Effizienzfaktor","Ausdauer","own","Meter je Herzschlag: lange gleichmäßige Läufe in Z2 130–148 bpm, auf flacher Strecke. Zu viele harte Einheiten drücken den Wert."],
+    ["fit.ltpace","Laktatschwelle Pace","Schwelle","own",`Schwellentraining 1× pro Woche: 3×10 min oder 2×20 min ${lt?"bei Z4 "+z(lt-6,lt):"knapp unter der Schwelle"}, 2–3 min Trabpause Z1–Z2.`],
+    ["fit.vo2run","VO2max Laufen","VO2max","own",`NTNU_4x4: 4×4 min ${hm?"bei Z5 "+z(hm*.9,hm*.95):"bei 90–95 % HFmax"}, 3 min Trabpause Z2 130–148 bpm, 1× pro Woche.`],
+    ["run.vr","Vertikales Verhältnis","Technik","garmin","Weniger Auf und Ab je Meter: Kadenz leicht erhöhen, Lauf-ABC und Steigerungen 2× pro Woche, Kraft nach vorne statt nach oben, aufrechter Oberkörper."],
+    ["run.vo_r","Vertikale Bewegung (tempobereinigt)","Technik","own","Flacher laufen: Sprungseil und Pogo-Sprünge (2×30 s), Rumpfkraft. Ziel ist eine steife, elastische Feder statt Hüpfen."],
+    ["run.gct_r","Bodenkontakt (tempobereinigt)","Technik","own","Kürzerer Bodenkontakt: Plyometrie (Hopserlauf, Pogo, Bergsprints 6×10 s), Wadenkraft; Fuß unter dem Körperschwerpunkt aufsetzen."],
+    ["run.cad_e","Kadenz (Dauerläufe)","Technik","cad","Kadenz in kleinen Schritten anheben: 2–3 Wochen je +2–3 spm mit Metronom bei gleichem Tempo. Kürzere Schritte senken Einfedern und Bremskraft."]];
+  const L=M.filter(([id])=>ok(id)).map(([id,l,area,kind,act])=>{const s={...S[id]};if(kind==="cad")s.better="up";const e=roEval(s);if(!e)return null;
+    let band;const v=(id==="run.gct_r"?e.P.filter(p=>p.x>=toTs("2025-02")):e.P).map(p=>p.y);   // Bodenkontakt: Sensorwechsel Feb. 2025, Ziel nur aus Daten danach
+    if(kind==="garmin")band=[6.1,7.4];
+    else if(kind==="cad")band=[e.cur*1.05,e.cur*1.10];
+    else band=s.better==="down"?[qtlG(v,0),qtlG(v,.25)]:[qtlG(v,.75),qtlG(v,1)];
+    const lo=Math.min(...band),hi=Math.max(...band),goal=s.better==="down"?hi:lo;   // Zielgrenze, die erreicht werden soll
+    const inB=e.cur>=lo&&e.cur<=hi||(s.better==="down"?e.cur<lo:e.cur>hi),gap=inB?0:Math.abs(e.cur-goal)/e.sd;
+    const st=inB?"good":gap<=1?"warn":"bad",prio=gap+(e.z<-.4?.6:0)-(e.z>.4?.3:0);
+    return{id,s,l:l||s.label,area,kind,act,e,band,goal,gap,st,prio};}).filter(Boolean);
+  // Kadenz ist Mittel zum Zweck: nur Stellschraube, wenn das vertikale Verhältnis nicht im Ziel ist, und nachrangig
+  const vrO=L.find(o=>o.id==="run.vr");L.filter(o=>o.kind==="cad").forEach(o=>{o.st=vrO&&vrO.st!=="good"?"warn":"good";o.prio=o.st==="warn"?.3:-1;});
+  if(!L.length){view.append(h(`<div class="msg">Für das Laufoptimum fehlen Laufdaten. Der nächste Export ergänzt sie.</div>`));return;}
+  const yr=o=>o.e.yr==null?"–":`${o.e.yr>=0?"+":"−"}${o.s.fmt==="pace"?fmt(o.s,Math.abs(o.e.yr)):nf(Math.abs(o.e.yr),o.s.dec??1)}`;
+  const arr=o=>{const[vc,vt]=o.e.z>.4?["good","verbessert sich"]:o.e.z<-.4?["bad","verschlechtert sich"]:["flat","stagniert"],dir=vc==="good"?"up":vc==="bad"?"down":"flat";
+    const AR={up:"M8 1.5v13M3 6.5l5-5 5 5",down:"M8 14.5v-13M3 9.5l5 5 5-5",flat:"M1.5 8h13M9.5 3l5 5-5 5"},svg=`<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${AR[dir]}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    return`<span class="ro-arr ${vc} ${dir}" title="${vt}: ${yr(o)} pro Jahr">${dir==="down"?svg+`<b>${yr(o)}</b>`:`<b>${yr(o)}</b>`+svg}<small>pro Jahr</small></span>`;};
+  const STT={good:["im Ziel","--good"],warn:["nahe am Ziel","--fit"],bad:["Handlungsbedarf","--bad"]};
+  const tgt=o=>`${fmt(o.s,Math.min(...o.band))} – ${fmt(o.s,Math.max(...o.band))}`;
+  const src=o=>o.kind==="garmin"?"Garmin-Skala „gut“":o.kind==="cad"?"+5–10 % (Heiderscheit 2011)":"dein bestes Viertel";
+  const RK={bad:2,warn:1,good:0},ord=(a,b)=>RK[b.st]-RK[a.st]||b.prio-a.prio;
+  const top=[...L].filter(o=>o.st!=="good").sort(ord);
+  // A: Stellschrauben
+  view.append(h(`<section class="panel"><div class="ph"><h2>Deine Stellschrauben</h2><span class="note">sortiert nach Abstand zum Ziel und Trend · Ziel = ${"dein bestes Viertel bzw. Fachreferenz"} · Stand: Ø der letzten 90 Tage</span></div>
+    ${top.length?`<div class="cs-grid">${top.slice(0,4).map((o,i)=>`<article class="cs ${o.st}">
+      <div class="cs-h"><span class="cs-n">${i+1}</span><div><h3>${o.l}</h3><span class="cs-a">${o.area}</span></div>${arr(o)}</div>
+      <div class="cs-v"><div><small>aktuell</small><b>${fmt(o.s,o.e.cur)}</b><span>${unitOf(o.s)}</span></div><div><small>Ziel (${src(o)})</small><b style="color:var(--good)">${tgt(o)}</b><span>${unitOf(o.s)}</span></div></div>
+      <div class="cs-bar"><i style="width:${Math.max(4,100-Math.min(100,o.gap/3*100))}%"></i></div>
+      <p><b>Nachjustieren:</b> ${o.act}</p></article>`).join("")}</div>`:`<div class="ro-sum"><b>Alle Kennwerte liegen im Zielbereich.</b> Halte Umfang und Struktur.</div>`}
+    <div class="tblwrap" style="margin-top:14px"><table class="ro-t"><thead><tr><th style="text-align:left">Kennwert</th><th style="text-align:left">Bereich</th><th>aktuell</th><th>Ziel</th><th>Trend /Jahr</th><th style="text-align:left">Status</th></tr></thead><tbody>
+    ${[...L].sort(ord).map(o=>`<tr><td style="text-align:left;font-family:var(--f-body)">${o.l} <span style="color:var(--muted)">[${unitOf(o.s)||"–"}]</span></td><td style="text-align:left;font-family:var(--f-body);color:var(--muted)">${o.area}</td>
+      <td><b>${fmt(o.s,o.e.cur)}</b></td><td style="color:var(--good)">${tgt(o)}</td><td>${yr(o)}</td><td style="text-align:left"><span class="ro-v ${o.st==="good"?"good":o.st==="bad"?"bad":""}">${STT[o.st][0]}</span></td></tr>`).join("")}
+    </tbody></table></div></section>`));
+  // B: Ziel-Kennlinien
+  const sec=h(`<section class="panel"><div class="ph"><h2>Ziel-Kennlinien</h2><span class="note">Monatswerte, 3-Monats-Mittel, grünes Band = Zielbereich, gestrichelte Linie = Zielgrenze, Pfeil = Trend 12 Monate</span></div><div class="ro-grid"></div></section>`);
+  view.append(sec);const g=sec.querySelector(".ro-grid");
+  ["Ausdauer","Schwelle","VO2max","Technik"].forEach(area=>L.filter(o=>o.area===area).forEach(o=>{const s=o.s;
+    const b=h(`<div class="ro-c cs-${o.st}"><div class="ph"><h3>${o.l} <span class="cs-a">${area}</span></h3><span class="right">${arr(o)}<span class="note">${unitOf(s)} ${bigBtn("series:"+o.id)}</span></span></div>
+      <div class="ro-band"><i></i>Ziel ${tgt(o)}${unitOf(s)?" "+unitOf(s):""} (${src(o)}) · aktuell ${fmt(s,o.e.cur)} · <span style="color:var(${STT[o.st][1]})">${STT[o.st][0]}</span></div><div class="chartbox xs"><canvas></canvas></div></div>`);g.append(b);
+    const p=pts(s).filter(q=>!o.e.out.some(x=>x.x===q.x)),o2=baseOpts();o2.scales.y=yAxis(s);o2.plugins.legend={display:false};
+    const lo=Math.min(...o.band),hi=Math.max(...o.band),all=p.map(q=>q.y).concat([lo,hi]),pad=(Math.max(...all)-Math.min(...all))*.08;o2.scales.y.min=Math.min(...all)-pad;o2.scales.y.max=Math.max(...all)+pad;
+    const ds=[lineDs(s,p,col(s.group)+"88",{fill:false,pointRadius:2}),{...lineDs(s,movAvg(p,s.freq==="week"?12:3),col(s.group),{fill:false,borderWidth:2.6,pointRadius:0,lbl:"Ø 3 Monate"}),_noTrend:true}];
+    charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:ds},options:o2,plugins:[bandPlug(o.band,o.goal)]}));
+    ROX[o.id]=ROX[o.id]||{arrow:arr(o),band:o.band,zb:`Ziel ${tgt(o)} · aktuell ${fmt(s,o.e.cur)}`,plugin:bandPlug(o.band,o.goal)};}));
+  sec.append(h(`<p class="ro-note">Nur aerobe Dauerläufe (ab 5 km, unter 15 Hm/km, 50–85 % HF-Reserve). „Dein bestes Viertel“ = oberes Quartil deiner eigenen Monatswerte bis zum Bestwert, also ein Niveau, das du schon erreicht hast. Vertikales Verhältnis = Auf und Ab je Schrittlänge; Garmin-Skala: unter 6,1 % exzellent, 6,1–7,4 gut, 7,5–8,6 mittel, 8,7–10,1 schwach. Tempobereinigt = Abweichung vom Erwartungswert bei deinem Tempo. HF-Zonen aus deinen Workouts und deiner bereinigten HFmax.</p>`));
 }
 
 // ---- Load-Fokus (3 Bänder mit Zielbereich) + Trainingsstatus ----
@@ -1341,7 +1422,7 @@ function drawRoute(det){
 
 function renderTabs(){
   const t=document.getElementById("tabs");
-  const all=[{id:"overview",label:"Überblick"},...(DATA.plan?[{id:"plan",label:"Training"}]:[]),{id:"acts",label:"Aktivitäten"},...DATA.groups,{id:"explore",label:"Vergleich"}];
+  const all=[{id:"overview",label:"Überblick"},...(DATA.plan?[{id:"plan",label:"Training"}]:[]),...(DATA.series["run.pref"]?[{id:"coach",label:"Laufoptimum"}]:[]),{id:"acts",label:"Aktivitäten"},...DATA.groups,{id:"explore",label:"Vergleich"}];
   if(!all.some(x=>x.id===TAB))TAB="overview";
   t.innerHTML=all.map(g=>`<button class="tab" role="tab" data-id="${g.id}" aria-selected="${g.id===TAB}" style="${COLORS[g.id]?`--c:var(${COLORS[g.id]})`:""}">${COLORS[g.id]?'<span class="dot"></span>':""}${g.label}</button>`).join("");
   t.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{TAB=b.dataset.id;save();render();});
@@ -1352,7 +1433,7 @@ function render(){
   const view=document.getElementById("view");view.innerHTML="";
   document.getElementById("range").hidden=TAB==="acts"||TAB==="plan";
   ACT.charts.forEach(c=>c.destroy());ACT.charts=[];ACT.routeCv=null;
-  if(TAB==="overview")renderOverview(view);else if(TAB==="plan")renderTraining(view);else if(TAB==="acts")renderActs(view);else if(TAB==="explore")renderExplorer(view);
+  if(TAB==="overview")renderOverview(view);else if(TAB==="plan")renderTraining(view);else if(TAB==="coach")renderCoach(view);else if(TAB==="acts")renderActs(view);else if(TAB==="explore")renderExplorer(view);
   else renderGroup(view,DATA.groups.find(g=>g.id===TAB));
   charts.forEach(c=>{if(!c._det&&c.options&&c.options.scales&&c.options.scales.x&&c.options.scales.x.min!=null)wheelZoom(c);});
   if(BIG)drawBig();

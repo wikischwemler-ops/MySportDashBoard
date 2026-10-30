@@ -140,8 +140,8 @@ def fetch_activities(g, start, end, full):
     for k, v in acts.items():          # ältere Cache-Einträge ohne ID ergänzen
         if k.isdigit(): v.setdefault("id", int(k))
     # vollständige Jahre aus dem Cache, aktuelle 30 Tage immer neu
-    if acts and any("name" not in v for v in acts.values()):
-        log("Ältere Aktivitätsdaten ohne Namen gefunden – lade alle Aktivitäten einmal neu.")
+    if acts and any("name" not in v or "vr" not in v for v in acts.values()):
+        log("Ältere Aktivitätsdaten ohne Namen oder Laufdynamik gefunden – lade alle Aktivitäten einmal neu.")
         acts = {}
     have_until = max((v["d"] for v in acts.values()), default=None)
     have_from = min((v["d"] for v in acts.values()), default=None)
@@ -180,6 +180,8 @@ def slim_activity(a):
         "gct": a.get("avgGroundContactTime"), "pwr": a.get("avgPower"), "np": a.get("normPower"),
         "swolf": a.get("averageSwolf"), "spl": a.get("avgStrokes") or a.get("averageStrokes"),
         "vo2": a.get("vO2MaxValue"), "event": dig(a, "eventType", "typeKey"),
+        "vo": a.get("avgVerticalOscillation"), "vr": a.get("avgVerticalRatio"),       # Laufdynamik (cm, %)
+        "stride": a.get("avgStrideLength"), "gap": a.get("avgGradeAdjustedSpeed"),   # Schrittlänge (cm), Tempo höhenbereinigt (m/s)
     }
 
 def fetch_daily(g, start, end, full):
@@ -391,14 +393,15 @@ def run_economy(acts, daily):
         if not .5 <= hrr <= .85: continue
         cad = a.get("cad") if (a.get("cad") or 0) >= 140 else None
         v = a["dist"] / a["mov"] * 60                                      # m/min
-        P.append(dict(m=a["d"][:7], v=v, hr=a["hr"], r0=r0, hrr=hrr, cad=cad, gct=a.get("gct"), step=v / cad * 100 if cad else None))
+        P.append(dict(m=a["d"][:7], v=v, hr=a["hr"], r0=r0, hrr=hrr, cad=cad, gct=a.get("gct"), step=v / cad * 100 if cad else None,
+                      vo=a.get("vo") or None, vr=a.get("vr") or None))
     if len(P) < 10: return {}, None
     ref = round(st.median(p["hr"] for p in P) / 5) * 5
     for p in P:
         p["ri"] = 0.2 * p["v"] / p["hrr"] + 3.5
         p["ef"] = p["v"] / p["hr"]
         p["pref"] = 1000 / (p["v"] * (ref - p["r0"]) / (p["hr"] - p["r0"])) * 60 if ref > p["r0"] + 10 else None   # s/km
-    for k in ("step", "cad", "gct"):
+    for k in ("step", "cad", "gct", "vo", "vr"):
         Q = [p for p in P if p[k]]
         if len(Q) < 10: continue
         mx, my = st.mean(p["v"] for p in Q), st.mean(p[k] for p in Q)
@@ -407,7 +410,7 @@ def run_economy(acts, daily):
     M = defaultdict(list)
     for p in P: M[p["m"]].append(p)
     def ms(k): return [(m, st.median(x[k] for x in L if x.get(k) is not None) if any(x.get(k) is not None for x in L) else None) for m, L in sorted(M.items())]
-    out = {k: ms(k) for k in ("ri", "ef", "pref", "step_r", "cad_r", "gct_r")}
+    out = {k: ms(k) for k in ("ri", "ef", "pref", "step_r", "cad_r", "gct_r", "vo_r", "vr_r", "vr", "cad", "gct", "vo")}
     out["n"] = [(m, len(L)) for m, L in sorted(M.items())]
     out["hrmax"] = [(m, hrmax(m)) for m in mkeys]
     return out, ref
@@ -449,6 +452,10 @@ def build(acts, daily, weekly, rng, start, end):
         add("run.cad_r", "run", "Kadenz tempobereinigt", "spm", "month", eco["cad_r"], agg="avg", better="none", dec=1)
         add("run.gct_r", "run", "Bodenkontakt tempobereinigt", "ms", "month", eco["gct_r"], agg="avg", better="down", dec=1)
         add("run.econ_n", "run", "Dauerläufe für Laufökonomie", "", "month", eco["n"], dec=0)
+        add("run.vr", "run", "Vertikales Verhältnis (Dauerläufe)", "%", "month", eco["vr"], agg="avg", better="down", dec=1)
+        add("run.vr_r", "run", "Vertikales Verhältnis tempobereinigt", "%", "month", eco["vr_r"], agg="avg", better="down", dec=2)
+        add("run.vo_r", "run", "Vertikale Bewegung tempobereinigt", "cm", "month", eco["vo_r"], agg="avg", better="down", dec=2)
+        add("run.cad_e", "run", "Kadenz (Dauerläufe)", "spm", "month", eco["cad"], agg="avg", better="none", dec=0)
     # Rad
     add("bike.km", "bike", "Distanz", "km", "month", mser("bike", km))
     add("bike.h", "bike", "Zeit", "h", "month", mser("bike", hrs))
