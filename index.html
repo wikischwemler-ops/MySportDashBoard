@@ -492,6 +492,7 @@ function renderOverview(view){
     ${rows.map(([id,l,u],i)=>`<tr${i&&DATA.series[rows[i-1][0]].group!==DATA.series[id].group?' class="grp"':""}><td style="font-family:var(--f-body)"><span style="color:${col(DATA.series[id].group)}">●</span> ${l} <span style="color:var(--muted)">[${u}]</span></td>${yrs.map(y=>`<td>${nf(sumY(id,y),0)}</td>`).join("")}</tr>`).join("")}
     <tr class="grp"><td style="font-family:var(--f-body);font-weight:600">Trainingszeit gesamt <span style="color:var(--muted)">[h]</span></td>${yrs.map(y=>`<td style="font-weight:600">${nf(tot(y),0)}</td>`).join("")}</tr>
     </tbody></table></div></section>`));
+  view.append(h(`<section class="panel" id="perp"></section>`));drawPeriod();
 
   const g2=h(`<div class="grid2"></div>`);view.append(g2);
   for(const id of ["fit.vo2run","health.hrv","fit.ctl","health.weight"].filter(i=>DATA.series[i])){
@@ -499,6 +500,45 @@ function renderOverview(view){
     g2.append(b);const o2=baseOpts();o2.scales.y=yAxis(s);
     const p2=pts(s);charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:[lineDs(s,p2,col(s.group),{pointRadius:0}),{...lineDs(s,movAvg(p2,8),css("--ink"),{fill:false,borderWidth:1.4,pointRadius:0,lbl:"Ø 8 Wochen"}),_noTrend:true}]},options:o2}));
   }
+}
+
+
+// ---- Monats-/Wochenübersicht: aktueller Zeitraum zum Blättern, Vergleich mit Vorperiode und Vorjahr (aus den Einzelaktivitäten) ----
+const PER={mode:"month",key:null};
+function drawPeriod(){
+  const box=document.getElementById("perp");if(!box)return;const A=DATA.activities||[];
+  if(!A.length){box.innerHTML=`<div class="ph"><h2>Monatsübersicht</h2></div><div class="note">Wird geladen, sobald die Einzelaktivitäten da sind.</div>`;return;}
+  const tk=isoD(new Date()),wk=PER.mode==="week";
+  if(!PER.key||PER.key.length!==(wk?10:7))PER.key=wk?monOf(tk):tk.slice(0,7);
+  const rng=k=>wk?[k,addD(k,6)]:[k+"-01",isoD(new Date(+k.slice(0,4),+k.slice(5,7),0,12))];
+  const shift=(k,n)=>wk?addD(k,7*n):isoD(new Date(+k.slice(0,4),+k.slice(5,7)-1+n,1,12)).slice(0,7);
+  const lastYear=k=>wk?addD(k,-364):(+k.slice(0,4)-1)+k.slice(4);
+  const sel=k=>{const[a,b]=rng(k);return A.filter(x=>x.d>=a&&x.d<=b);};
+  const sum=(L,sp,f)=>L.filter(x=>!sp||x.sp===sp).reduce((s,x)=>s+(f(x)||0),0);
+  const ROWS=[["run","Laufen","km",x=>x.km,1],["run","Lauf-Höhenmeter","m",x=>x.elev,0],["run","Laufzeit","h",x=>x.dur/3600,1],["run","Läufe","Anzahl",()=>1,0],
+    ["bike","Rad","km",x=>x.km,0],["bike","Rad-Höhenmeter","m",x=>x.elev,0],["bike","Radzeit","h",x=>x.dur/3600,1],
+    ["swim","Schwimmen","km",x=>x.km,1],["swim","Schwimmzeit","h",x=>x.dur/3600,1],
+    ["other","Sonstige","h",x=>x.dur/3600,1],[null,"Trainingszeit gesamt","h",x=>x.dur/3600,1],[null,"Aktivitäten","Anzahl",()=>1,0]];
+  const C=[PER.key,shift(PER.key,-1),lastYear(PER.key)].map(sel);
+  const lbl=k=>{if(!wk)return`${MONTHS_L[+k.slice(5,7)-1]} ${k.slice(0,4)}`;const[a,b]=rng(k),d=new Date(addD(k,3)+"T12:00:00"),j=new Date(d.getFullYear(),0,4,12);
+    const kw=1+Math.round(((d-j)/864e5-3+(j.getDay()+6)%7)/7);return`KW ${kw} · ${+a.slice(8)}.${+a.slice(5,7)}. – ${+b.slice(8)}.${+b.slice(5,7)}.${b.slice(0,4)}`;};
+  const now=wk?monOf(tk):tk.slice(0,7),first=wk?monOf(A[0].d):A[0].d.slice(0,7);
+  const dlt=(v,p,dec)=>{if(!p&&!v)return"";const d=v-p;return`<span class="delta">${d>=0?"+":"−"}${nf(Math.abs(d),dec)}</span>`;};
+  const chev=d=>`<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const rows=ROWS.filter(([sp])=>!sp||C.some(L=>L.some(x=>x.sp===sp)));
+  box.innerHTML=`<div class="calhead"><div class="calnav"><button class="iconbtn" id="pp" aria-label="${wk?"Vorwoche":"Vormonat"}" ${PER.key<=first?"disabled":""}>${chev("M10 3 5 8l5 5")}</button>
+      <h2 style="min-width:11em">${wk?"Wochenübersicht":"Monatsübersicht"}<br><span style="font:500 13px var(--f-body);color:var(--muted)">${lbl(PER.key)}</span></h2>
+      <button class="iconbtn" id="pn" aria-label="${wk?"Nächste Woche":"Nächster Monat"}" ${PER.key>=now?"disabled":""}>${chev("m6 3 5 5-5 5")}</button>
+      <button class="btn" id="pt">${wk?"Diese Woche":"Dieser Monat"}</button></div>
+    <div class="seg" role="group" aria-label="Zeitraum"><button data-pm="month" aria-pressed="${!wk}">Monat</button><button data-pm="week" aria-pressed="${wk}">Woche</button></div></div>
+    <div class="tblwrap"><table><thead><tr><th>Kennzahl</th><th>${PER.key===now?(wk?"Diese Woche":"Dieser Monat"):(wk?"Gewählte Woche":"Gewählter Monat")}</th><th>${wk?"Vorwoche":"Vormonat"}</th><th>Δ</th><th>Vorjahr</th><th>Δ</th></tr></thead><tbody>
+    ${rows.map(([sp,l,u,f,dec],i)=>{const v=C.map(L=>sum(L,sp,f)),g=i&&rows[i-1][0]!==sp;
+      return`<tr${g?' class="grp"':""}><td style="font-family:var(--f-body)${sp?"":";font-weight:600"}"><span style="color:${sp?col(sp):"var(--ink)"}">${sp?"●":""}</span> ${l} <span style="color:var(--muted)">[${u}]</span></td>
+        <td style="font-weight:600">${nf(v[0],dec)}</td><td>${nf(v[1],dec)}</td><td>${dlt(v[0],v[1],dec)}</td><td>${nf(v[2],dec)}</td><td>${dlt(v[0],v[2],dec)}</td></tr>`;}).join("")}
+    </tbody></table></div>${PER.key===now?`<div class="note" style="margin-top:6px">Laufender ${wk?"Woche":"Monat"} bis heute; Vergleichswerte jeweils für den ganzen Zeitraum.</div>`:""}`;
+  const go=k=>{PER.key=k;drawPeriod();};
+  box.querySelector("#pp").onclick=()=>go(shift(PER.key,-1));box.querySelector("#pn").onclick=()=>go(shift(PER.key,1));box.querySelector("#pt").onclick=()=>go(now);
+  box.querySelectorAll("[data-pm]").forEach(b=>b.onclick=()=>{PER.mode=b.dataset.pm;PER.key=null;drawPeriod();});
 }
 
 // ---- Laufoptimierung: Laufökonomie, Schwelle, Max-Puls, Laufstil mit Bewertung der Entwicklung ----
@@ -1276,7 +1316,7 @@ function fallbackJs(){ // Doppelklick auf index.html (file://): data.js statt fe
   const s=document.createElement("script");s.src="data.js?"+Date.now();s.onload=()=>window.GARMIN_DATA?load(window.GARMIN_DATA):fail();s.onerror=fail;document.head.append(s);}
 const getData=()=>fetch("data.json?"+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(d=>load(d)).catch(fallbackJs).then(loadActs);
 // Einzelaktivitäten getrennt in activities.json (Kalender)
-function setActs(j){const L=Array.isArray(j)?j:(j&&j.activities);if(!DATA||!Array.isArray(L))return false;DATA.activities=L;ACT.det=null;if(TAB==="acts"||TAB==="plan")render();return true;}
+function setActs(j){const L=Array.isArray(j)?j:(j&&j.activities);if(!DATA||!Array.isArray(L))return false;DATA.activities=L;ACT.det=null;if(TAB==="acts"||TAB==="plan")render();else if(TAB==="overview")drawPeriod();return true;}
 function loadActs(){if(!DATA||(DATA.activities&&DATA.activities.length&&!DATA._actsFile))return;
   fetch("activities.json?"+Date.now(),{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(j=>{if(setActs(j))DATA._actsFile=true;})
   .catch(()=>{if(window.GARMIN_ACTIVITIES)return setActs(window.GARMIN_ACTIVITIES);const s=document.createElement("script");s.src="activities.js?"+Date.now();s.onload=()=>setActs(window.GARMIN_ACTIVITIES);document.head.append(s);});}
