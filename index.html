@@ -224,6 +224,10 @@ code{font-family:var(--f-mono);font-size:12px;background:var(--soft);padding:1px
 .kin .kleg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin-bottom:4px}
 .kin .kleg i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
 .kin .kmap{display:flex;gap:8px;align-items:stretch}.kin .kmap canvas{display:block;border-radius:6px}
+.kin .kmleg{font-size:12.5px;color:var(--muted);margin:8px 0 4px}.kin .kmleg table{border-collapse:collapse;font-variant-numeric:tabular-nums}
+.kin .kmleg th,.kin .kmleg td{padding:3px 12px 3px 0;text-align:left;border-bottom:1px solid var(--line)}.kin .kmleg th{font-weight:500}
+.kin .kmleg td:first-child{color:var(--ink)}.kin .kmleg i{display:inline-block;width:28px;height:12px;border-radius:3px;vertical-align:middle}
+.kin .kmleg small{color:var(--muted)}.kin .kmleg p{margin:6px 0 0;max-width:110ch}
 .kin .kscale{display:flex;flex-direction:column;justify-content:space-between;font:11px var(--f-mono);color:var(--muted)}
 .toolbar{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;justify-content:space-between;margin:12px 0 4px}
 .hint{font-size:.88em;color:var(--muted)}
@@ -1156,7 +1160,7 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
     .map(([l,f,c])=>{const R=P.filter(f);return R.length>20?{l,c,F:kinAvg(R,"F"),Fb:kinAvg(R,"Fb"),Fp:kinAvg(R,"Fp")}:null;}).filter(Boolean);
   const d0=dec[0],d9=dec[dec.length-1],p0=d0.p,p9=d9.p;
   const kc=(l,v0,v9,u,dd)=>`<div class="kpi" style="--c:var(--run);padding:9px 12px"><span class="l">${l}</span><span class="v" style="font-size:19px">${nf(v0,dd)} → ${nf(v9,dd)}<small>${u}</small></span></div>`;
-  const sec=h(`<section class="kin"><div class="ph"><h2>Laufkinematik</h2><label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="kintr" ${KIN.tr?"checked":""}> Trendlinien</label></div>
+  const sec=h(`<section class="kin"><div class="ph"><h2>Laufkinematik</h2><label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="kintr" ${KIN.tr?"checked":""}> Trendlinien</label><label class="hint" style="display:flex;gap:6px;align-items:center;cursor:pointer"><input type="checkbox" id="kinpace" ${KIN.pace?"checked":""}> Tempo einblenden</label></div>
     <div class="hint">Laufen als fortlaufende Schwingung des Körperschwerpunkts: im Bodenkontakt federt das Bein ein, in der Flugphase hebt sich der Schwerpunkt wieder. Berechnet aus Kadenz, Bodenkontaktzeit, Tempo und vertikaler Bewegung, nur Laufabschnitte (Kadenz ≥ 150). Werte: erstes → letztes Zehntel der Strecke. Verläufe über die Distanz: Strg + Mausrad zoomt, danach mit der Hand verschieben.</div>
     <div class="kpis" style="margin-top:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">${kc("Schrittweite",p0.step*100,p9.step*100,"cm",0)}${kc("Amplitude",(p0.dyc+p0.hfl)*100,(p9.dyc+p9.hfl)*100,"cm",1)}${kc("Kontaktzeit",p0.tc*1000,p9.tc*1000,"ms",0)}${kc("Flugzeit",p0.tf*1000,p9.tf*1000,"ms",0)}${kc("Spitzenbeschl.",p0.F,p9.F,"g",2)}${kc("Steifigkeit tempobereinigt",d0.kres,d9.kres,"kN/m",1)}${kc("Bremskraft-Spitze",d0.Fb,d9.Fb,"×KG",2)}</div>
     <div class="kh">Bewegungswelle: Höhe des Schwerpunkts über drei Schritte (cm) gegen die Strecke (m), je Zehntel der Strecke von Start (blau) bis Ziel (rot)</div>
@@ -1165,6 +1169,7 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
       <div><div class="kh">Vertikale Beschleunigung über einen Schritt (g)</div><div class="kc"><canvas></canvas></div></div></div>
     <div class="kh">Kennfeld über die gesamte Distanz: x = km, y = Position im Schritt (Aufsetzen unten, Ende der Flugphase oben), Farbe = Höhe des Schwerpunkts</div>
     <div class="kmap"><div style="flex:1;min-width:0"><canvas style="width:100%;height:200px"></canvas></div><div class="kscale"><span></span><canvas width="12" height="160" style="width:12px;height:150px"></canvas><span></span></div></div>
+    <div class="kmleg"></div>
     <div class="grid2"><div><div class="kh">Spitzenbeschleunigung im Bodenkontakt (g) · Band = Spanne · gestrichelt = Erwartung bei diesem Tempo</div><div class="kleg" data-t="0"></div><div class="kc"><canvas></canvas></div></div>
       <div><div class="kh">Schrittweite (cm) · gestrichelt = Erwartung bei diesem Tempo</div><div class="kleg" data-t="1"></div><div class="kc"><canvas></canvas></div></div>
       <div><div class="kh">Sprung (cm): vertikale Bewegung (Garmin) und Flughöhe aus der Flugzeit</div><div class="kleg" data-t="2"></div><div class="kc"><canvas></canvas></div></div>
@@ -1179,10 +1184,11 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
     <div class="hint" style="margin-top:10px">Sinus-Modell nach Morin et al. (2005) mit ${nf(bd.m,1)} kg und ${nf(bd.H*100,0)} cm${bd.est?" (geschätzt, im Export fehlen Körpermaße)":""}, Beinlänge 0,53 × Größe. Erwartungswerte aus einer Regression über das Tempo auf flachen Abschnitten dieser Aktivität. Kraft und Steifigkeit sind Modellschätzungen; Vergleiche zwischen Abschnitten und Läufen sind belastbarer als die absoluten Werte. Garmin misst die vertikale Bewegung am Rumpf, das Modell beschreibt den Schwerpunkt.</div></section>`);
   body.append(sec);
   sec.querySelector("#kintr").onchange=e=>{KIN.tr=e.target.checked;drawKin(a,det);};
+  sec.querySelector("#kinpace").onchange=e=>{KIN.pace=e.target.checked;drawKin(a,det);};
   const cv=[...sec.querySelectorAll(".kc canvas")],grid=css("--line"),mut=css("--muted");
   const lin=(d,c,x={})=>({data:d,borderColor:c,backgroundColor:c,borderWidth:1.8,pointRadius:0,tension:0,spanGaps:true,...x});
   const opt=(xt,yt,lab,u,dd,dx)=>({responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:"index",intersect:false},
-    plugins:{legend:{display:false},tooltip:{filter:i=>!!i.dataset._l,callbacks:{title:i=>nf(i[0].parsed.x,dx)+" "+xt,label:i=>" "+i.dataset._l+": "+nf(i.parsed.y,dd)+" "+u}}},
+    plugins:{legend:{display:false},tooltip:{filter:i=>!!i.dataset._l,callbacks:{title:i=>nf(i[0].parsed.x,dx)+" "+xt,label:i=>" "+i.dataset._l+": "+(i.dataset._fmt?i.dataset._fmt(i.parsed.y):nf(i.parsed.y,dd)+" "+u)}}},
     scales:{x:{type:"linear",grid:{color:grid},title:{display:true,text:xt},ticks:{maxTicksLimit:8,callback:v=>nf(v,v%1?1:0)}},y:{grid:{color:grid},title:{display:!!yt,text:yt},ticks:{maxTicksLimit:5,callback:v=>nf(v,v%1?(Math.abs(v)<1?2:1):0)}}}});
   const mk=(i,ds,o)=>KIN.charts.push(new Chart(cv[i],{type:"line",data:{datasets:ds},options:o}));
   // Bewegungswelle, vertikale Geschwindigkeit und Beschleunigung je Zehntel
@@ -1198,6 +1204,17 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
   for(let k=0;k<=kmMax;k+=stp){const x=k/kmMax*W;ctx.fillRect(x,H-6,1,6);ctx.fillText(k+" km",Math.min(x+3,W-40),H-8);}
   const sc=sec.querySelector(".kscale canvas").getContext("2d");for(let j=0;j<160;j++){sc.fillStyle=hc(lo+(1-j/160)*(hi-lo));sc.fillRect(0,j,12,1);}
   const sl=sec.querySelectorAll(".kscale span");sl[0].textContent=nf(hi,1)+" cm";sl[1].textContent=nf(lo,1)+" cm";
+  // Lesehilfe: ein Schritt von unten nach oben, typische Werte = Median aller Schritte, in Klammern die Extremwerte der Farbskala
+  const md=a=>{const b=[...a].sort((x,y)=>x-y);return b[b.length>>1];},KS=S.map(s=>kinStep(s.v,s.tc,s.tf,s.F));
+  const dn=-md(KS.map(p=>p.dyc))*100,up=md(KS.map(p=>p.hfl))*100,cs=md(KS.map(p=>p.tc/p.T))*100;
+  const sw=v=>`<i style="background:${hc(Math.max(lo,Math.min(hi,v)))}"></i>`;
+  sec.querySelector(".kmleg").innerHTML=`<table><thead><tr><th>Position im Schritt (von unten nach oben)</th><th>Farbe</th><th>Höhe des Schwerpunkts</th></tr></thead><tbody>
+    <tr><td>Aufsetzen</td><td>${sw(0)}</td><td>0 (Bezugshöhe)</td></tr>
+    <tr><td>Mitte Bodenkontakt: Bein federt ein, tiefster Punkt</td><td>${sw(dn)}</td><td>ca. ${nf(dn,1)} cm <small>(tiefster Wert im Lauf ${nf(lo,1)})</small></td></tr>
+    <tr><td>Abheben</td><td>${sw(0)}</td><td>0</td></tr>
+    <tr><td>Mitte der Flugphase: höchster Punkt</td><td>${sw(up)}</td><td>ca. +${nf(up,1)} cm <small>(höchster Wert im Lauf +${nf(hi,1)})</small></td></tr>
+    <tr><td>Nächstes Aufsetzen</td><td>${sw(0)}</td><td>0</td></tr></tbody></table>
+    <p>0 = Höhe des Schwerpunkts beim Aufsetzen (gleich der beim Abheben). Das Absinken ist kein Aufprall, sondern gleichmäßiges Einfedern von Knie und Sprunggelenk bis zur Mitte des Bodenkontakts; den kurzen Aufprall-Peak liefern die Garmin-Daten nicht. Gesamtschwankung je Schritt ca. ${nf(up-dn,1)} cm. Bodenkontakt ≈ ${nf(cs,0)} % des Schritts (unterer Bildteil), Flugphase ≈ ${nf(100-cs,0)} % (oberer Teil). Mehr Gelb/Orange oben = längere Flugphase (schneller oder bergab), tieferes Blau = tieferes Einfedern (Ermüdung oder bergab).</p>`;
   // Verläufe über die Distanz, optional mit Trendlinie (gestrichelt dick, Änderung Start → Ziel in der Legende)
   const X=k=>S.filter(s=>s[k]!=null).map(s=>({x:s.km,y:s[k]})),trd=(p,c)=>lin(trend(p),c,{borderDash:[8,4],borderWidth:3});
   const run=(i,items,u,dd)=>{const ds=[],lg=[];items.forEach(([lab,k,c,x={},band])=>{const p=X(k);if(p.length<3)return;
@@ -1206,7 +1223,13 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
       if(KIN.tr&&!x.borderDash){const tp=trend(p);if(tp.length){ds.push(trd(p,c));t=` (${tp[1].y-tp[0].y>=0?"+":""}${nf(tp[1].y-tp[0].y,dd)} ${u})`;}}
       lg.push(`<span><i style="background:${c}"></i>${lab}${t}</span>`);});
     sec.querySelector(`.kleg[data-t="${i-3}"]`).innerHTML=lg.join("");
-    const o=opt("km",u,"",u,dd,1);o.scales.x.min=S[0].km;o.scales.x.max=S[S.length-1].km;mk(i,ds,o);wheelZoom(KIN.charts[KIN.charts.length-1]);};
+    const o=opt("km",u,"",u,dd,1);o.scales.x.min=S[0].km;o.scales.x.max=S[S.length-1].km;
+    // optional: Lauftempo (min/km) auf zweiter Achse rechts, nach oben = schneller
+    if(KIN.pace){const pc=css("--other"),pf=v=>`${Math.floor(v/60)}:${pad(Math.round(v%60))}`;
+      ds.push({...lin(S.filter(s=>s.v>0).map(s=>({x:s.km,y:1000/s.v})),pc,{borderWidth:1.3,yAxisID:"yp"}),_l:"Tempo",_fmt:v=>pf(v)+" min/km",order:5});
+      o.scales.yp={position:"right",reverse:true,grid:{display:false},title:{display:true,text:"min/km"},ticks:{maxTicksLimit:5,callback:pf}};
+      lg.push(`<span><i style="background:${pc}"></i>Tempo (rechte Achse)</span>`);sec.querySelector(`.kleg[data-t="${i-3}"]`).innerHTML=lg.join("");}
+    mk(i,ds,o);wheelZoom(KIN.charts[KIN.charts.length-1]);};
   const ref={borderDash:[4,4],borderWidth:1.2};
   run(3,[["Spitzenbeschleunigung","F",css("--pred"),{},["Fmin","Fmax"]],["Erwartung","Fx",mut,ref]],"g",2);
   run(4,[["Schrittweite Garmin","stride",css("--bike"),{}],["Erwartung","sx",mut,ref]],"cm",0);
