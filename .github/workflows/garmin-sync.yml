@@ -2,7 +2,12 @@ name: Garmin Sync
 
 # Holt jede Nacht um 0 Uhr (deutsche Zeit) die Garmin-Daten, verschlüsselt sie
 # und veröffentlicht das Dashboard auf GitHub Pages. Manuell: Actions → Garmin Sync → Run workflow.
+# Zusätzlich bei jedem Push/Merge nach main, damit Änderungen am Dashboard sofort online sind.
 on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"        # reine Doku-Änderungen brauchen keinen Neuaufbau
   schedule:
     - cron: "7 22 * * *"   # 0:07 Uhr Sommerzeit
     - cron: "7 23 * * *"   # 0:07 Uhr Winterzeit
