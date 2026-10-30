@@ -220,7 +220,13 @@ code{font-family:var(--f-mono);font-size:12px;background:var(--soft);padding:1px
 .kin{margin-top:18px;border-top:1px solid var(--line);padding-top:12px}
 .kin h2{font-family:var(--f-display);font-weight:600;font-size:21px;margin:0}
 .kin .kh{font-size:12.5px;color:var(--muted);margin:14px 0 4px}
-.kin .kc{position:relative;height:clamp(200px,28vh,300px)}
+.kin .kc,.kin .kcv{position:relative;height:clamp(200px,28vh,300px)}
+.kin .kopt h3{font:600 16px var(--f-display);margin:20px 0 4px}
+.kin .kopt table{border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;margin:6px 0}
+.kin .kopt th,.kin .kopt td{padding:4px 14px 4px 0;text-align:right;border-bottom:1px solid var(--line)}.kin .kopt th:first-child,.kin .kopt td:first-child{text-align:left}
+.kin .kopt th{font-weight:500;color:var(--muted)}.kin .kopt .best{color:var(--good);font-weight:600}
+.kin .kopt ul{margin:6px 0;padding-left:18px;font-size:13.5px}.kin .kopt li{margin:3px 0}
+.kin .kopt .vr{display:inline-block;padding:1px 7px;border-radius:4px;font:500 11.5px var(--f-mono)}
 .kin .kleg{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted);margin-bottom:4px}
 .kin .kleg i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:4px}
 .kin .kmap{display:flex;gap:8px;align-items:stretch}.kin .kmap canvas{display:block;border-radius:6px}
@@ -1145,6 +1151,45 @@ function kinAt(p,t){t=t%p.T;if(t<p.tc){const s=Math.sin(p.w*t),c=Math.cos(p.w*t)
     return{y:-p.A*s+(p.A*p.w+p.v0)*t-GRAV*t*t/2,vz:-p.A*p.w*c+(p.A*p.w+p.v0)-GRAV*t,a:p.F*s-1};}
   const u=t-p.tc;return{y:(GRAV*p.tf/2)*u-GRAV*u*u/2,vz:GRAV*p.tf/2-GRAV*u,a:-1};}
 const kinCol=f=>`hsl(${Math.round(215-f*205)},72%,52%)`;
+// Laufoptimum: bei gleichem Tempo (flache Punkte ±5 % um das Median-Tempo) typischer Schritt (Median) gegen deine ökonomischsten 10 %
+// (kleinstes vertikales Verhältnis = Auf und Ab je Meter Schritt) und gegen Kadenz +5 % (gleicher Kontaktanteil; Heiderscheit et al. 2011)
+function drawKinOpt(sec,P,C,lin,opt){
+  const box=sec.querySelector(".kopt");if(!box)return;const md=a=>{const b=[...a].sort((x,y)=>x-y);return b[b.length>>1];};
+  const FL=P.filter(p=>Math.abs(p.grade)<2),vm=md(FL.map(p=>p.v)),W=FL.filter(p=>Math.abs(p.v-vm)/vm<.05);
+  if(W.length<40){box.innerHTML="";return;}
+  W.forEach(p=>p.vr=(p.dyc+p.hfl)/p.step*100);W.sort((a,b)=>a.vr-b.vr);
+  const mk=R=>{const tc=md(R.map(p=>p.tc)),tf=md(R.map(p=>p.tf));return kinStep(vm,tc,tf,Math.PI/2*(tf/tc+1));};
+  const typ=mk(W),eco=mk(W.slice(0,Math.max(10,Math.round(W.length*.1)))),cad=kinStep(vm,typ.tc/1.05,typ.tf/1.05,typ.F);
+  const V=[["Dein typischer Schritt",typ,css("--muted")],["Dein ökonomischster Schritt (beste 10 %)",eco,css("--good")],["Kadenz +5 % (Modell)",cad,css("--accent")]];
+  const val=p=>({cad:60/p.T,tc:p.tc*1000,tf:p.tf*1000,dn:p.dyc*100,up:p.hfl*100,amp:(p.dyc+p.hfl)*100,step:p.step*100,vr:(p.dyc+p.hfl)/p.step*100,F:p.F,kv:p.F*kinBody().m*GRAV/p.dyc/1000});
+  const v0=val(typ),v1=val(eco),v2=val(cad);
+  const vrG=C.vr?md(C.vr.filter(x=>x!=null&&x>0)):null;
+  const cat=x=>x<6.1?["exzellent","--good"]:x<7.5?["gut","--swim"]:x<8.7?["mittel","--fit"]:x<10.2?["schwach","--run"]:["sehr schwach","--bad"];
+  const ROWS=[["Kadenz","spm","cad",0,1],["Bodenkontakt","ms","tc",0,-1],["Flugzeit","ms","tf",0,0],["Einfedern im Kontakt","cm","dn",1,-1],["Steigen in der Flugphase","cm","up",1,-1],
+    ["Auf und Ab gesamt","cm","amp",1,-1],["Schrittlänge","cm","step",0,0],["Vertikales Verhältnis (Modell)","%","vr",1,-1],["Spitzenkraft","×KG","F",2,-1],["Vertikale Steifigkeit","kN/m","kv",1,1]];
+  // Hinweise aus dem Vergleich typisch → ökonomisch
+  const T=[],d=k=>v1[k]-v0[k];
+  if(d("cad")>=2)T.push(`<b>Kadenz erhöhen:</b> deine ökonomischsten Schritte haben ${Math.round(v1.cad)-Math.round(v0.cad)} Schritte/min mehr (${nf(v1.cad,0)} statt ${nf(v0.cad,0)}). Kürzere, schnellere Schritte senken Einfedern und Auf und Ab (Heiderscheit 2011: +5–10 % Kadenz).`);
+  if(d("tc")<=-8)T.push(`<b>Kürzerer Bodenkontakt:</b> ${nf(-d("tc"),0)} ms weniger. Fuß näher unter dem Körperschwerpunkt aufsetzen, aktiv abdrücken statt „absitzen“.`);
+  if(d("dn")<=-.4)T.push(`<b>Weniger einsacken:</b> ${nf(-d("dn"),1)} cm weniger Einfedern. Das spricht für mehr Spannung in Fuß, Wade und Hüfte (Federsteifigkeit): Lauf-ABC, Sprungseil, Plyometrie, Krafttraining Wade/Gesäß.`);
+  if(d("up")<=-.2)T.push(`<b>Weniger hochspringen:</b> ${nf(-d("up"),1)} cm weniger Steigen in der Flugphase. Kraft nach vorne statt nach oben lenken.`);
+  if(d("step")>=3&&d("cad")<2)T.push(`<b>Längerer Schritt bei gleicher Kadenz:</b> ${nf(d("step"),0)} cm mehr. Kommt aus kräftigerem Abdruck nach hinten, nicht aus weiterem Vorgreifen.`);
+  if(!T.length)T.push("Dein typischer Schritt liegt schon nahe an deinen ökonomischsten Schritten. Reserven liegen eher in Grundlagenausdauer und Schwelle als in der Lauftechnik.");
+  box.innerHTML=`<h3>Laufoptimum: Wo du effizienter laufen kannst</h3>
+    <div class="hint">Vergleich bei gleichem Tempo (${fmtPace(vm)} min/km, flache Abschnitte, ${W.length} Messpunkte): dein typischer Schritt, deine ökonomischsten 10 % (am wenigsten Auf und Ab je Meter) und das Modell mit 5 % höherer Kadenz. Ziel ist nicht null Bewegung: Einfedern speichert Energie in Sehnen und gibt sie beim Abdruck zurück. Effizient heißt wenig Auf und Ab je Meter Vortrieb, kurzer Bodenkontakt und eine steife, aber elastische Feder.</div>
+    <div class="kleg" style="margin-top:8px">${V.map(([l,,c])=>`<span><i style="background:${c}"></i>${l}</span>`).join("")}</div>
+    <div class="kcv"><canvas></canvas></div>
+    <div class="tblwrap"><table><thead><tr><th>Kennwert</th><th>typisch</th><th>ökonomisch</th><th>Kadenz +5 %</th></tr></thead><tbody>
+      ${ROWS.map(([l,u,k,dd,b])=>{const best=b===0?-1:[v0,v1,v2].reduce((bi,x,i,a)=>b*x[k]>b*a[bi][k]?i:bi,0);
+        return`<tr><td>${l} <span style="color:var(--muted)">[${u}]</span></td>${[v0,v1,v2].map((x,i)=>`<td class="${i===best?"best":""}">${nf(x[k],dd)}</td>`).join("")}</tr>`;}).join("")}
+    </tbody></table></div>
+    ${vrG?`<div class="hint">Garmin misst dein vertikales Verhältnis in diesem Lauf mit <b>${nf(vrG,1)} %</b> <span class="vr" style="color:var(${cat(vrG)[1]});background:color-mix(in srgb,var(${cat(vrG)[1]}) 15%,transparent)">${cat(vrG)[0]}</span> (Garmin-Skala: unter 6,1 % exzellent, 6,1–7,4 gut, 7,5–8,6 mittel, 8,7–10,1 schwach). Das Modell rechnet mit dem Schwerpunkt, Garmin mit dem Rumpf, daher weichen die Werte ab.</div>`:""}
+    <h3 style="font-size:14.5px">Was du verbessern kannst</h3><ul>${T.map(t=>`<li>${t}</li>`).join("")}</ul>`;
+  const cv=box.querySelector(".kcv canvas");
+  KIN.charts.push(new Chart(cv,{type:"line",data:{datasets:V.map(([l,p,c],i)=>({...lin(Array.from({length:241},(_,j)=>{const t=j/240*3*typ.T;return{x:vm*t,y:kinAt(p,t).y*100};}),c,{borderWidth:i?2.4:2,borderDash:i===2?[6,4]:[]}),_l:l}))},
+    options:opt("m","cm","","cm",1,2)}));
+}
+const fmtPace=v=>{const s=Math.round(1000/v);return`${Math.floor(s/60)}:${pad(s%60)}`;};
 function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
   const C=det.ch||{},body=document.getElementById("dbody");if(body)body.querySelectorAll(".kin").forEach(e=>e.remove());
   if(!body||a.sp!=="run"||!C.cad||!C.gct||!C.speed||!det.dist)return;
@@ -1167,6 +1212,7 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
     <div class="kleg">${dec.map(o=>`<span><i style="background:${kinCol(o.f)}"></i>${o.lab}</span>`).join("")}</div><div class="kc"><canvas></canvas></div>
     <div class="grid2"><div><div class="kh">Vertikale Geschwindigkeit über einen Schritt (m/s)</div><div class="kc"><canvas></canvas></div></div>
       <div><div class="kh">Vertikale Beschleunigung über einen Schritt (g)</div><div class="kc"><canvas></canvas></div></div></div>
+    <div class="kopt"></div>
     <div class="kh">Kennfeld über die gesamte Distanz: x = km, y = Position im Schritt (Aufsetzen unten, Ende der Flugphase oben), Farbe = Höhe des Schwerpunkts</div>
     <div class="kmap"><div style="flex:1;min-width:0"><canvas style="width:100%;height:200px"></canvas></div><div class="kscale"><span></span><canvas width="12" height="160" style="width:12px;height:150px"></canvas><span></span></div></div>
     <div class="kmleg"></div>
@@ -1195,6 +1241,7 @@ function drawKin(a,det){KIN.charts.forEach(c=>c.destroy());KIN.charts=[];
   mk(0,dec.map(o=>({...lin(Array.from({length:241},(_,i)=>{const t=i/240*3*o.p.T;return{x:o.p.v*t,y:kinAt(o.p,t).y*100};}),kinCol(o.f)),_l:o.lab})),opt("m","cm","","cm",1,2));
   const one=k=>dec.map(o=>({...lin(Array.from({length:101},(_,i)=>{const t=i/100*o.p.T;return{x:t*1000,y:kinAt(o.p,t)[k]};}),kinCol(o.f)),_l:o.lab}));
   mk(1,one("vz"),opt("ms","m/s","","m/s",2,0));mk(2,one("a"),opt("ms","g","","g",2,0));
+  drawKinOpt(sec,P,C,lin,opt);
   // Kennfeld
   const mc=sec.querySelector(".kmap canvas"),W=Math.max(200,Math.round(mc.parentElement.clientWidth)),H=200,NY=48;mc.width=W;mc.height=H;
   let lo=1e9,hi=-1e9;const G=S.map(s=>{const p=kinStep(s.v,s.tc,s.tf,s.F);return Array.from({length:NY},(_,j)=>{const y=kinAt(p,(j+.5)/NY*p.T).y*100;lo=Math.min(lo,y);hi=Math.max(hi,y);return y;});});
