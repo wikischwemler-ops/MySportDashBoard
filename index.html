@@ -87,6 +87,8 @@ nav.tabs{display:flex;gap:2px;overflow-x:auto;border-bottom:1px solid var(--line
 .ro-arr.flat{flex-direction:row;flex-wrap:wrap;justify-content:center;gap:0 4px;max-width:90px}
 .ro-arr.flat small{flex-basis:100%;text-align:center}
 .ro-arr.good{color:var(--good)}.ro-arr.bad{color:var(--bad)}
+.ro-band{font-size:11.5px;color:var(--muted);display:flex;gap:6px;align-items:center;margin:-2px 0 4px;font-variant-numeric:tabular-nums}
+.ro-band i{width:14px;height:10px;border-radius:2px;background:color-mix(in srgb,var(--good) 25%,transparent);border:1px dashed color-mix(in srgb,var(--good) 60%,transparent)}
 .ro-i{font-size:12px;color:var(--muted);margin:0 0 6px;min-height:2.8em}
 .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
 @media (max-width:900px){.grid2{grid-template-columns:minmax(0,1fr)}}
@@ -538,19 +540,27 @@ function renderRunOpt(view){
       <td><b>${fmt(o.s,o.e.cur)}</b></td><td>${dlt(o,o.e.ago)}</td><td>${o.s.better==="none"?"–":`${fmt(o.s,o.e.best)}<br><small>${tsLabel(o.e.bestAt)}</small>`}</td><td>${yrTxt(o)}</td>
       <td style="text-align:left">${o.s.better==="none"?"":`<span class="ro-bar"><i style="width:${g/3*100}%"></i></span> ${nf(o.e.gap,1)} σ`}</td>
       <td style="text-align:left"><span class="ro-v ${vc}">${vt}</span></td></tr>`;}).join("")}</tbody></table></div>`));
-  sec.append(h(`<p class="ro-note">σ = Standardabweichung der Monatswerte; Trend „verbessert/verschlechtert“ ab 0,4 σ pro Jahr. Ausreißer über 3,5 robuste Standardabweichungen (z. B. VO2max Frühjahr 2025) zählen nicht. Kurven: Monatswerte, gleitendes 3-Monats-Mittel und linearer Trend der letzten 12 Monate (grün = Verbesserung, rot = Verschlechterung).</p>`));
+  sec.append(h(`<p class="ro-note">σ = Standardabweichung der Monatswerte; Trend „verbessert/verschlechtert“ ab 0,4 σ pro Jahr. Ausreißer über 3,5 robuste Standardabweichungen (z. B. VO2max Frühjahr 2025) zählen nicht. Kurven: Monatswerte, gleitendes 3-Monats-Mittel und linearer Trend der letzten 12 Monate (grün = Verbesserung, rot = Verschlechterung). Grünes Band = Zielbereich: dein bestes Viertel aller Monatswerte (vom oberen Quartil bis zum Bestwert), also das Niveau, das du schon erreicht hast und wieder erreichen kannst. Bei neutralen Kennwerten gibt es kein Band.</p>`));
   const g=h(`<div class="ro-grid"></div>`);sec.append(g);
   // Trendpfeil je Kennlinie: grün nach oben = verbessert, rot nach unten = verschlechtert, grau = stagniert/neutral; Zahl = Trend pro Jahr
   const AR={up:"M8 1.5v13M3 6.5l5-5 5 5",down:"M8 14.5v-13M3 9.5l5 5 5-5",flat:"M1.5 8h13M9.5 3l5 5-5 5"};
   const arrow=o=>{if(o.e.yr==null)return"";const[vc,vt]=verdict(o),neu=vc==="neutral",dir=vc==="good"?"up":vc==="bad"?"down":neu&&Math.abs(o.e.yr)/o.e.sd>=.4?(o.e.yr>0?"up":"down"):"flat";
     const svg=`<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${AR[dir]}" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`,n=`<b>${yrTxt(o).replace(" /Jahr","")}</b>`;
     return`<span class="ro-arr ${vc} ${dir}" title="${vt}: ${yrTxt(o)} (Trend der letzten 12 Monate)">${dir==="down"?svg+n:dir==="up"?n+svg:svg+n}<small>pro Jahr</small></span>`;};
-  L.forEach(o=>{const s=o.s,[vc]=verdict(o),b=h(`<div class="ro-c"><div class="ph"><h3>${o.l}</h3><span class="right">${arrow(o)}<span class="note">${unitOf(s)} ${bigBtn("series:"+o.id)}</span></span></div><p class="ro-i">${o.info}</p><div class="chartbox xs"><canvas></canvas></div></div>`);g.append(b);
+  // Zielbereich je Kennlinie: bestes Viertel der eigenen Monatswerte (Quartil in Richtung "besser" bis Bestwert), ohne Ausreißer
+  const qtl=(a,q)=>{const b=[...a].sort((x,y)=>x-y),i=(b.length-1)*q,lo=Math.floor(i);return b[lo]+(b[Math.ceil(i)]-b[lo])*(i-lo);};
+  L.forEach(o=>{if(o.s.better==="none")return;const v=o.e.P.map(p=>p.y);o.band=o.s.better==="down"?[qtl(v,0),qtl(v,.25)]:[qtl(v,.75),qtl(v,1)];});
+  const inBand=o=>o.band&&o.e.cur>=Math.min(...o.band)&&o.e.cur<=Math.max(...o.band);
+  const bandPlugin=o=>({id:"roBand",beforeDatasetsDraw(c){if(!o.band)return;const y=c.scales.y,a=c.chartArea,p1=y.getPixelForValue(o.band[0]),p2=y.getPixelForValue(o.band[1]);
+    const t=Math.max(a.top,Math.min(p1,p2)),b=Math.min(a.bottom,Math.max(p1,p2));if(b<=t)return;const x=c.ctx;x.save();x.fillStyle=css("--good")+"26";x.fillRect(a.left,t,a.right-a.left,b-t);
+    x.strokeStyle=css("--good")+"88";x.setLineDash([3,3]);x.lineWidth=1;[t,b].forEach(yy=>{if(yy>a.top&&yy<a.bottom){x.beginPath();x.moveTo(a.left,yy);x.lineTo(a.right,yy);x.stroke();}});x.restore();}});
+  L.forEach(o=>{const s=o.s,[vc]=verdict(o),b=h(`<div class="ro-c"><div class="ph"><h3>${o.l}</h3><span class="right">${arrow(o)}<span class="note">${unitOf(s)} ${bigBtn("series:"+o.id)}</span></span></div><p class="ro-i">${o.info}</p>${o.band?`<div class="ro-band"><i></i>Zielbereich ${fmt(s,Math.min(...o.band))} – ${fmt(s,Math.max(...o.band))}${unitOf(s)?" "+unitOf(s):""} · aktuell ${fmt(s,o.e.cur)}${inBand(o)?" ✓ im Ziel":""}</div>`:""}<div class="chartbox xs"><canvas></canvas></div></div>`);g.append(b);
     const p=pts(s).filter(q=>!o.e.out.some(x=>x.x===q.x)),ma=s.freq==="week"?12:3,o2=baseOpts();o2.scales.y=yAxis(s);o2.plugins.legend={display:false};
     const tc=css(vc==="good"?"--good":vc==="bad"?"--bad":"--muted"),T=o.e.T.length>=4?[o.e.T[0],o.e.T[o.e.T.length-1]].map(q=>({x:q.x,y:o.e.T.reduce((a,p)=>a+p.y,0)/o.e.T.length+o.e.k*(q.x-o.e.T.reduce((a,p)=>a+p.x,0)/o.e.T.length)})):[];
     const ds=[lineDs(s,p,col(s.group)+"99",{fill:false,pointRadius:2}),{...lineDs(s,movAvg(p,ma),col(s.group),{fill:false,borderWidth:2.4,pointRadius:0,lbl:`Ø ${ma} ${s.freq==="week"?"Wochen":"Monate"}`}),_noTrend:true}];
     if(T.length)ds.push({data:T,borderColor:tc,borderWidth:3,borderDash:[7,4],pointRadius:0,fill:false,tension:0,_noTrend:true,label:"Trend 12 Monate",tooltip:{callbacks:{label:()=>" Trend 12 Monate: "+yrTxt(o)}}});
-    charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:ds},options:o2}));});
+    if(o.band){const lo=Math.min(...o.band),hi=Math.max(...o.band),pad=(hi-lo)*.15||o.e.sd*.1;o2.scales.y.suggestedMin=lo-pad;o2.scales.y.suggestedMax=hi+pad;}
+    charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:ds},options:o2,plugins:[bandPlugin(o)]}));});
 }
 
 // ---- Load-Fokus (3 Bänder mit Zielbereich) + Trainingsstatus ----
