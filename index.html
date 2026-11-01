@@ -873,9 +873,23 @@ function renderLactate(view){
     [[vmin,N.v1,g,"Phase 1"],[N.v1,N.v2,f,"Phase 2"],[N.v2,vmax,r,"Phase 3"]].forEach(([a,b,col,l])=>{const xa=x.getPixelForValue(a),xb=x.getPixelForValue(b);ctx.fillStyle=col+"14";ctx.fillRect(xa,A.top,xb-xa,A.bottom-A.top);
       ctx.fillStyle=col;ctx.font="500 11px "+css("--f-mono");ctx.textAlign="center";ctx.fillText(l,(xa+xb)/2,A.top+14);});
     [[N.v1,2,"LT1"],[N.v2,4,"LT2"]].forEach(([v,L,l])=>{const px=x.getPixelForValue(v),py=y.getPixelForValue(L);ctx.strokeStyle=css("--ink");ctx.setLineDash([4,4]);ctx.lineWidth=1;
-      ctx.beginPath();ctx.moveTo(px,A.bottom);ctx.lineTo(px,py);ctx.lineTo(A.left,py);ctx.stroke();ctx.setLineDash([]);
-      ctx.fillStyle=css("--ink");ctx.textAlign="left";ctx.fillText(`${l} ${L} mmol/l`,px+5,py-6);});
-    ctx.restore();}};
+      ctx.beginPath();ctx.moveTo(px,A.bottom);ctx.lineTo(px,py);ctx.lineTo(A.left,py);ctx.stroke();ctx.setLineDash([]);});
+    ctx.restore();},
+    // Punkte und Beschriftung über den Kurven: LT1/LT2 der aktuellen Kurve groß, Vergleichskurven als kleine Ringe
+    afterDatasetsDraw(c){const{ctx,chartArea:A,scales:{x,y}}=c;ctx.save();const ink=css("--ink"),pan=css("--panel"),mono=css("--f-mono");
+      snaps.slice(1).forEach(s=>[[s.v1,2],[s.v2,4]].forEach(([v,L])=>{if(v<vmin||v>vmax)return;ctx.beginPath();ctx.arc(x.getPixelForValue(v),y.getPixelForValue(L),4,0,7);ctx.fillStyle=pan;ctx.fill();ctx.lineWidth=1.6;ctx.strokeStyle=s.c;ctx.stroke();}));
+      [[N.v1,2,"LT1",N.hr1,g],[N.v2,4,"LT2",N.lthr,r]].forEach(([v,L,l,hr,col])=>{const px=x.getPixelForValue(v),py=y.getPixelForValue(L);
+        const t1=`${l} · ${L} mmol/l`,t2=`${pc(v)} min/km · ${hr} bpm`;ctx.font="600 12px "+mono;const w1=ctx.measureText(t1).width;ctx.font="500 11px "+mono;const w=Math.max(w1,ctx.measureText(t2).width)+14,hh=36;
+        // freie Stelle suchen: kein Kurvenpunkt (alle Kurven) im Kasten, innerhalb der Zeichenfläche; Reihenfolge rechts unten, links oben, …
+        const pts=c.data.datasets.flatMap((d,i)=>{const m=c.getDatasetMeta(i).data,o=[];m.forEach((e,j)=>{o.push([e.x,e.y]);const n=m[j+1];if(n)for(let k=1;k<4;k++)o.push([e.x+(n.x-e.x)*k/4,e.y+(n.y-e.y)*k/4]);});return o;});   // Kurven verdichtet, damit steile Stücke nicht durchrutschen
+        const free=(bx,by)=>bx>=A.left+2&&bx+w<=A.right-2&&by>=A.top+20&&by+hh<=A.bottom-2&&!pts.some(([qx,qy])=>qx>bx-4&&qx<bx+w+4&&qy>by-4&&qy<by+hh+4);
+        const cand=[[16,14],[16,40],[-w-16,-hh-14],[-w-16,-hh-50],[16,-hh-14],[-w-16,14],[40,70],[-w-40,-hh-90]].map(([dx,dy])=>[px+dx,py+dy]);
+        let [bx,by]=cand.find(([a,b])=>free(a,b))||cand[0];
+        ctx.strokeStyle=col;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(Math.min(Math.max(px,bx),bx+w),Math.min(Math.max(py,by),by+hh));ctx.stroke();   // Verbindungslinie
+        ctx.fillStyle=pan+"ee";ctx.strokeStyle=col;ctx.lineWidth=1.2;ctx.beginPath();ctx.roundRect?ctx.roundRect(bx,by,w,hh,6):ctx.rect(bx,by,w,hh);ctx.fill();ctx.stroke();
+        ctx.textAlign="left";ctx.fillStyle=col;ctx.font="600 12px "+mono;ctx.fillText(t1,bx+7,by+15);ctx.fillStyle=ink;ctx.font="500 11px "+mono;ctx.fillText(t2,bx+7,by+29);
+        ctx.beginPath();ctx.arc(px,py,6.5,0,7);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=2.5;ctx.strokeStyle=pan;ctx.stroke();});
+      ctx.restore();}};
   const ds=snaps.map((s,i)=>({label:`${s.l} (LT2 ${pc(s.v2)})`,data:X.map(v=>({x:v,y:Math.min(12,s.la(v))})),borderColor:s.c,borderWidth:i?1.6:2.8,borderDash:i?[6,4]:[],pointRadius:0,tension:0,fill:false,xAxisID:"x"}));
   ds.push({label:"_xh",data:[],xAxisID:"xh"});
   o.plugins.legend.labels.filter=it=>!it.text.startsWith("_");
