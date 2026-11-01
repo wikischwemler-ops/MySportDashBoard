@@ -1,0 +1,2 @@
+# Git-Hooks laufen unter sh/Python: immer LF
+.githooks/* text eol=lf
