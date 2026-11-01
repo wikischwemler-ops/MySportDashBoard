@@ -82,6 +82,17 @@ tr.grp td{border-top:2px solid var(--line)}
 .ro-c{border:1px solid var(--line);border-radius:9px;padding:10px 12px;min-width:0}
 .ro-c h3{font-size:14.5px;font-weight:600;margin:0}.ro-c .ph{margin-bottom:2px;align-items:flex-start}
 .ro-c .right{display:flex;gap:10px;align-items:center}
+.hz-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 28px;align-items:start}
+@media (max-width:700px){.hz-wrap{grid-template-columns:1fr}}
+.hz-rows{display:flex;flex-direction:column;gap:9px;min-width:0}
+.hz-r{display:grid;grid-template-columns:150px minmax(0,1fr) 72px;gap:12px;align-items:center;font:500 13.5px var(--f-mono);font-variant-numeric:tabular-nums}
+.hz-l{color:var(--c);white-space:nowrap}.hz-p{color:var(--muted);font-size:12px;text-align:right}
+.hz-t{position:relative;height:14px;background:var(--soft);border-radius:3px}
+.hz-t i{position:absolute;top:0;bottom:0;background:var(--c);border-radius:3px}
+.hz-ax .hz-t{background:none;height:14px}.hz-ax em{position:absolute;transform:translateX(-50%);font:400 11px var(--f-mono);color:var(--muted);font-style:normal}
+.hz-k{display:grid;grid-template-columns:repeat(2,minmax(120px,auto));gap:10px 22px}
+.hz-k small{display:block;font-size:11px;color:var(--muted)}.hz-k b{font:600 22px var(--f-mono);margin-right:3px}
+@media (max-width:480px){.hz-r{grid-template-columns:118px minmax(0,1fr) 60px;gap:8px;font-size:12px}.hz-ax{display:none}}
 .ro-arr{display:inline-flex;flex-direction:column;align-items:center;line-height:1.1;color:var(--muted);font-family:var(--f-mono);font-variant-numeric:tabular-nums}
 .ro-arr svg{width:19px;height:19px}.ro-arr.flat svg{width:17px;height:17px}
 #bigt .ro-arr{margin-left:14px;vertical-align:middle}
@@ -497,6 +508,7 @@ function volChart(canvas){
 }
 function renderOverview(view){
   view.append(h(`<div class="kpis">${kpi("run.km","Laufen km")}${kpi("bike.km","Rad km")}${kpi("swim.km","Schwimmen km")}${kpi("fit.vo2run","VO2max Laufen")}${kpi("health.rhr","Ruhepuls Ø")}${kpi("health.hrv","HRV Ø")}</div>`));
+  renderHrZones(view);
   renderRunOpt(view);
   const p=h(`<section class="panel"><div class="ph"><h2>Trainingszeit pro Monat</h2><span class="right"><span class="note">Stunden je Disziplin</span>${bigBtn("vol")}</span></div><div class="chartbox"><canvas></canvas></div></section>`);
   view.append(p);volChart(p.querySelector("canvas"));
@@ -588,6 +600,32 @@ function roEval(s){
   return{P,out,cur,ago,best,bestAt,yr,z,gap,sd,T,k};}
 const ROX={};   // Trendpfeil, Zielbereich und Band-Plugin je Kennlinie für die Vergrößerung
 Chart.register({id:"roBandBig",beforeDatasetsDraw(c){if(c._roBand)c._roBand.beforeDatasetsDraw(c);}});
+// ---- Aktuelle HF-Zonen (Garmin-Einstellungen) in Garmin-Farben ----
+const HZC=["#9aa3ad","#3b8bea","#3fb35a","#f39c2b","#e8483c"], HZS={RUNNING:"Laufen",CYCLING:"Rad",SWIMMING:"Schwimmen",DEFAULT:"Standard"};
+let HZSEL="RUNNING";
+function renderHrZones(view){
+  const Z=DATA.hrzones||[];if(!Z.length)return;
+  // gleiche Zonen nur einmal anbieten
+  const L=[];for(const z of Z){const o=L.find(x=>x.max===z.max&&x.z.join()===z.z.join()&&x.lthr===z.lthr);if(o)o.sps.push(z.sp);else L.push({...z,sps:[z.sp]});}
+  if(!L.some(x=>x.sps.includes(HZSEL)))HZSEL=L[0].sps[0];
+  const sec=h(`<section class="panel hz"></section>`);view.append(sec);
+  const draw=()=>{
+    const z=L.find(x=>x.sps.includes(HZSEL)),fl=z.z,mx=z.max,lo=fl[0],hrm=DATA.series["run.hrmax"],meas=hrm&&hrm.d.length?hrm.d[hrm.d.length-1][1]:null;
+    const pc=v=>Math.round(v/mx*100),x=v=>(v-lo)/(mx-lo)*100;
+    const meth=z.method==="HR_MAX"?"% HFmax":z.method==="HRR"?"% HF-Reserve":z.method==="LACTATE_THRESHOLD"?"% Laktatschwelle":z.method||"";
+    sec.innerHTML=`<div class="ph"><h2>Aktuelle Herzfrequenzzonen</h2><span class="right"><span class="note">aus Garmin Connect · Methode ${meth}</span>
+      ${L.length>1?`<div class="seg" role="group" aria-label="Sportart">${L.map(x=>`<button data-hz="${x.sps[0]}" aria-pressed="${x.sps.includes(HZSEL)}">${x.sps.map(s=>HZS[s]||s).join(" / ")}</button>`).join("")}</div>`:""}</span></div>
+      <div class="hz-wrap"><div class="hz-rows">${fl.map((f,i)=>{const top=i<4?fl[i+1]-1:mx;
+        return`<div class="hz-r" style="--c:${HZC[i]}"><span class="hz-l"><b>Z${i+1}</b> ${f}–${top} bpm</span><span class="hz-t"><i style="left:${x(f)}%;width:${x(top+1)-x(f)}%"></i></span><span class="hz-p">${pc(f)}–${pc(top)} %</span></div>`;}).join("")}
+        <div class="hz-r hz-ax"><span></span><span class="hz-t">${fl.map(f=>`<em style="left:${x(f)}%">${f}</em>`).join("")}<em style="left:100%">${mx}</em></span><span></span></div></div>
+      <div class="hz-k"><div><small>HFmax (Garmin-Zonen)</small><b>${mx}</b> bpm</div>
+        ${meas?`<div><small>HFmax gemessen (12 Monate, bereinigt)</small><b>${meas}</b> bpm</div>`:""}
+        ${z.lthr?`<div><small>Laktatschwelle</small><b>${z.lthr}</b> bpm</div>`:""}
+        ${z.rest?`<div><small>Ruhepuls (Zonen)</small><b>${z.rest}</b> bpm</div>`:""}</div></div>`;
+    sec.querySelectorAll("[data-hz]").forEach(b=>b.onclick=()=>{HZSEL=b.dataset.hz;draw();});
+  };
+  draw();
+}
 function renderRunOpt(view){
   const L=RO.filter(([id])=>DATA.series[id]).map(([id,l,info,bt])=>{const s=bt?{...DATA.series[id],better:bt}:DATA.series[id];return{id,s,l:l||s.label,info,e:roEval(s)};}).filter(o=>o.e);
   if(!L.length)return;

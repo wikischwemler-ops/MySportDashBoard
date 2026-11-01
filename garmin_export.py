@@ -765,6 +765,12 @@ def run_export(tokens=None, years=4.0, out=None, full=False, no_health=False, in
     w = sorted(rng.get("weight", {}).items())
     kg = w[-1][1] if w else (u.get("weight") or 0) / 1000
     data["meta"]["body"] = {"kg": round(kg, 1) if kg else None, "cm": u.get("height")}
+    # aktuelle HF-Zonen aus den Garmin-Einstellungen (Standard und je Sportart)
+    zs = call(g.connectapi, "/biometric-service/heartRateZones") or []
+    data["hrzones"] = [{"sp": z.get("sport"), "method": z.get("trainingMethod"), "max": z.get("maxHeartRateUsed"),
+                        "rest": z.get("restingHeartRateUsed"), "lthr": z.get("lactateThresholdHeartRateUsed"),
+                        "z": [z.get(f"zone{i}Floor") for i in range(1, 6)]}
+                       for z in zs if isinstance(z, dict) and z.get("zone1Floor")]
     data["plan"] = fetch_plan(g, end)
     log(f"Trainingsplan: {len(data['plan']['items'])} geplante Workouts, {len(data['plan']['events'])} Wettkämpfe")
     act_list = data.pop("activities")          # Einzelaktivitäten getrennt von den Kennlinien
