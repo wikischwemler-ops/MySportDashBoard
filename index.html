@@ -85,10 +85,12 @@ tr.grp td{border-top:2px solid var(--line)}
 .hz-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 28px;align-items:start}
 @media (max-width:700px){.hz-wrap{grid-template-columns:1fr}}
 .hz-rows{display:flex;flex-direction:column;gap:9px;min-width:0}
-.hz-r{display:grid;grid-template-columns:150px minmax(0,1fr) 72px;gap:12px;align-items:center;font:500 13.5px var(--f-mono);font-variant-numeric:tabular-nums}
-.hz-l{color:var(--c);white-space:nowrap}.hz-p{color:var(--muted);font-size:12px;text-align:right}
+.hz-r{display:grid;grid-template-columns:150px minmax(0,1fr) 84px;gap:12px;align-items:center;font:500 13.5px var(--f-mono);font-variant-numeric:tabular-nums}
+.hz-l{color:var(--c);white-space:nowrap}.hz-p{color:var(--muted);font-size:12px;text-align:right;white-space:nowrap}
 .hz-t{position:relative;height:14px;background:var(--soft);border-radius:3px}
 .hz-t i{position:absolute;top:0;bottom:0;background:var(--c);border-radius:3px}
+.hz-t s{position:absolute;top:-3px;bottom:-3px;border-left:2px dashed var(--ink);opacity:.7}
+.hz .ph .right{flex-wrap:wrap;gap:8px}
 .hz-ax .hz-t{background:none;height:14px}.hz-ax em{position:absolute;transform:translateX(-50%);font:400 11px var(--f-mono);color:var(--muted);font-style:normal}
 .hz-k{display:grid;grid-template-columns:repeat(2,minmax(120px,auto));gap:10px 22px}
 .hz-k small{display:block;font-size:11px;color:var(--muted)}.hz-k b{font:600 22px var(--f-mono);margin-right:3px}
@@ -602,7 +604,9 @@ const ROX={};   // Trendpfeil, Zielbereich und Band-Plugin je Kennlinie für die
 Chart.register({id:"roBandBig",beforeDatasetsDraw(c){if(c._roBand)c._roBand.beforeDatasetsDraw(c);}});
 // ---- Aktuelle HF-Zonen (Garmin-Einstellungen) in Garmin-Farben ----
 const HZC=["#9aa3ad","#3b8bea","#3fb35a","#f39c2b","#e8483c"], HZS={RUNNING:"Laufen",CYCLING:"Rad",SWIMMING:"Schwimmen",DEFAULT:"Standard"};
-let HZSEL="RUNNING";
+let HZSEL="RUNNING",HZB="garmin";
+// Zonen aus der Laktatschwelle nach Friel (Laufen, 5 Zonen): Z2 ab 85 %, Z3 ab 90 %, Z4 ab 95 %, Z5 ab 100 % LTHR
+const HZLT=[.85,.90,.95,1];
 function renderHrZones(view){
   const Z=DATA.hrzones||[];if(!Z.length)return;
   // gleiche Zonen nur einmal anbieten
@@ -610,19 +614,23 @@ function renderHrZones(view){
   if(!L.some(x=>x.sps.includes(HZSEL)))HZSEL=L[0].sps[0];
   const sec=h(`<section class="panel hz"></section>`);view.append(sec);
   const draw=()=>{
-    const z=L.find(x=>x.sps.includes(HZSEL)),fl=z.z,mx=z.max,lo=fl[0],hrm=DATA.series["run.hrmax"],meas=hrm&&hrm.d.length?hrm.d[hrm.d.length-1][1]:null;
-    const pc=v=>Math.round(v/mx*100),x=v=>(v-lo)/(mx-lo)*100;
-    const meth=z.method==="HR_MAX"?"% HFmax":z.method==="HRR"?"% HF-Reserve":z.method==="LACTATE_THRESHOLD"?"% Laktatschwelle":z.method||"";
-    sec.innerHTML=`<div class="ph"><h2>Aktuelle Herzfrequenzzonen</h2><span class="right"><span class="note">aus Garmin Connect · Methode ${meth}</span>
+    const z=L.find(x=>x.sps.includes(HZSEL)),lt=z.lthr,byLt=HZB==="lt"&&lt,mx=z.max,hrm=DATA.series["run.hrmax"],meas=hrm&&hrm.d.length?hrm.d[hrm.d.length-1][1]:null;
+    const fl=byLt?[z.z[0],...HZLT.map(f=>Math.round(f*lt))]:z.z,lo=fl[0],ref=byLt?lt:mx;
+    const pc=v=>Math.round(v/ref*100),x=v=>(v-lo)/(mx-lo)*100;
+    const meth=byLt?"aus Laktatschwelle "+lt+" bpm abgeleitet (Friel) · % Laktatschwelle":"aus Garmin Connect · Methode "+(z.method==="HR_MAX"?"% HFmax":z.method==="HRR"?"% HF-Reserve":z.method==="LACTATE_THRESHOLD"?"% Laktatschwelle":z.method||"");
+    sec.innerHTML=`<div class="ph"><h2>Aktuelle Herzfrequenzzonen</h2><span class="right"><span class="note">${meth}</span>
+      ${lt?`<div class="seg" role="group" aria-label="Zonenbasis"><button data-hzb="garmin" aria-pressed="${!byLt}">Garmin</button><button data-hzb="lt" aria-pressed="${!!byLt}">Laktatschwelle</button></div>`:""}
       ${L.length>1?`<div class="seg" role="group" aria-label="Sportart">${L.map(x=>`<button data-hz="${x.sps[0]}" aria-pressed="${x.sps.includes(HZSEL)}">${x.sps.map(s=>HZS[s]||s).join(" / ")}</button>`).join("")}</div>`:""}</span></div>
       <div class="hz-wrap"><div class="hz-rows">${fl.map((f,i)=>{const top=i<4?fl[i+1]-1:mx;
-        return`<div class="hz-r" style="--c:${HZC[i]}"><span class="hz-l"><b>Z${i+1}</b> ${f}–${top} bpm</span><span class="hz-t"><i style="left:${x(f)}%;width:${x(top+1)-x(f)}%"></i></span><span class="hz-p">${pc(f)}–${pc(top)} %</span></div>`;}).join("")}
+        return`<div class="hz-r" style="--c:${HZC[i]}"><span class="hz-l"><b>Z${i+1}</b> ${f}–${top} bpm</span><span class="hz-t"><i style="left:${x(f)}%;width:${x(top+1)-x(f)}%"></i>${lt?`<s style="left:${x(lt)}%" title="Laktatschwelle ${lt} bpm"></s>`:""}</span><span class="hz-p">${i||!byLt?pc(f):"<"+Math.round(HZLT[0]*100)}${i||!byLt?"–"+pc(top):""} %</span></div>`;}).join("")}
         <div class="hz-r hz-ax"><span></span><span class="hz-t">${fl.map(f=>`<em style="left:${x(f)}%">${f}</em>`).join("")}<em style="left:100%">${mx}</em></span><span></span></div></div>
       <div class="hz-k"><div><small>HFmax (Garmin-Zonen)</small><b>${mx}</b> bpm</div>
         ${meas?`<div><small>HFmax gemessen (12 Monate, bereinigt)</small><b>${meas}</b> bpm</div>`:""}
         ${z.lthr?`<div><small>Laktatschwelle</small><b>${z.lthr}</b> bpm</div>`:""}
-        ${z.rest?`<div><small>Ruhepuls (Zonen)</small><b>${z.rest}</b> bpm</div>`:""}</div></div>`;
+        ${z.rest?`<div><small>Ruhepuls (Zonen)</small><b>${z.rest}</b> bpm</div>`:""}</div></div>
+      ${lt?`<p class="ro-note">Gestrichelte Linie = Laktatschwelle ${lt} bpm. „Laktatschwelle“ leitet die Zonen nach Joe Friel aus dem Schwellenpuls ab: Z1 unter 85 %, Z2 85–89 %, Z3 90–94 %, Z4 95–99 %, Z5 ab 100 % der Laktatschwelle. „Garmin“ zeigt die in Garmin Connect eingestellten Zonen.</p>`:""}`;
     sec.querySelectorAll("[data-hz]").forEach(b=>b.onclick=()=>{HZSEL=b.dataset.hz;draw();});
+    sec.querySelectorAll("[data-hzb]").forEach(b=>b.onclick=()=>{HZB=b.dataset.hzb;draw();});
   };
   draw();
 }
