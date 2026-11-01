@@ -1,5 +1,6 @@
-"""Prüft Branch-Namen gegen .githooks/branch-rules.json: neue Branches nur als <Windows-Benutzer>/name.
+"""Prüft Branch-Namen gegen .githooks/branch-rules.json: neue Branches nur zweistufig als xxx/yyy.
 
+xxx = Präfix (feat, fix, Windows-Benutzer …), yyy = funktionaler Name.
 Als pre-push-Hook: liest die Git-Zeilen von stdin, Exitcode 1 bei unerlaubtem neuem Branch.
   --name NAME   einen Namen prüfen
   --ruleset     GitHub-Ruleset (JSON) aus den Regeln ausgeben
@@ -8,45 +9,48 @@ import json, os, re, sys
 from pathlib import Path
 
 RULES = json.loads((Path(__file__).parent / "branch-rules.json").read_text("utf-8"))
-USERS = [u.lower() for u in RULES["benutzer"]]
-ME = (os.environ.get("USERNAME") or os.environ.get("USER") or "").lower()
+TYPES = [p for p in RULES["praefix_beispiele"] if not p.startswith("<")]
+ME = re.sub(r"[^a-z0-9._-]+", "-", (os.environ.get("USERNAME") or os.environ.get("USER") or "").lower())
 ZERO = "0" * 40
 
 
 def ok(name):
     if name in RULES["erlaubt"]:
         return True
-    u, sep, rest = name.partition("/")
-    return bool(sep) and u == ME and re.match(RULES["name_muster"], rest) is not None
+    p, sep, rest = name.partition("/")
+    return bool(sep) and re.match(RULES["praefix_muster"], p) is not None and re.match(RULES["name_muster"], rest) is not None
 
 
 def suggest(name):
     low = re.sub(r"[^a-z0-9._/-]+", "-", name.lower()).strip("-/")
-    if low.startswith(ME + "/"):
-        low = low[len(ME) + 1:]
-    return f"{ME}/{low.replace('/', '-')}"
+    if "/" in low:                                   # zu tief: Rest zusammenziehen
+        p, _, rest = low.partition("/")
+        return f"{p}/{rest.replace('/', '-')}"
+    for t in TYPES:                                  # fix-garmin-tokens -> fix/garmin-tokens
+        for sep in ("-", "_", "."):
+            if low.startswith(t + sep) and len(low) > len(t) + 1:
+                return f"{t}/{low[len(t) + 1:]}"
+    return f"{ME or 'feat'}/{low}"
 
 
 def report(name):
     tip = suggest(name)
+    bsp = "\n".join(f"    {p:<20}{d}" for p, d in RULES["praefix_beispiele"].items())
     print(f"""
 Push abgelehnt: Branch-Name "{name}" ist nicht erlaubt.
-  Neue Branches nur als <Windows-Benutzer>/name, bei dir: {ME}/name
-  Name: Kleinbuchstaben, Ziffern, Punkt, Bindestrich, Unterstrich, kein weiterer "/".
+  Neue Branches nur zweistufig: xxx/yyy  (xxx = Präfix, yyy = funktionaler Name)
+  Präfix-Beispiele:
+{bsp}
+  Erlaubte Zeichen: Kleinbuchstaben, Ziffern, Punkt, Bindestrich, Unterstrich; genau ein "/".
   Regeln: .githooks/branch-rules.json
   Vorschlag:  git branch -m "{name}" "{tip}"
               git push -u origin "{tip}"
 """, file=sys.stderr)
 
 
-def warn_unknown():
-    if ME not in USERS:
-        print(f'\nHinweis: "{ME}" fehlt in "benutzer" in .githooks/branch-rules.json. GitHub lehnt den Branch '
-              f'sonst ab: dort eintragen, Ruleset neu erzeugen (--ruleset) und auf GitHub ersetzen.\n', file=sys.stderr)
-
-
 def ruleset():
-    exclude = [f"refs/heads/{b}" for b in RULES["erlaubt"]] + [f"refs/heads/{u}/*" for u in USERS]
+    # GitHub-Muster: "*" umfasst keinen "/", also genau zwei Stufen
+    exclude = [f"refs/heads/{b}" for b in RULES["erlaubt"]] + ["refs/heads/*/*"]
     return {"name": "Branch-Namen", "target": "branch", "enforcement": "active",
             "conditions": {"ref_name": {"include": ["~ALL"], "exclude": exclude}},
             "rules": [{"type": "creation"}], "bypass_actors": []}
@@ -56,14 +60,10 @@ def main(argv):
     if "--ruleset" in argv:
         print(json.dumps(ruleset(), ensure_ascii=False, indent=2))
         return 0
-    if not ME:
-        print("pre-push: Windows-Benutzer unbekannt (USERNAME fehlt), Branch-Namen werden nicht geprüft.", file=sys.stderr)
-        return 0
     if "--name" in argv:
         name = argv[argv.index("--name") + 1]
         if ok(name):
             print(f'"{name}" ist erlaubt.')
-            warn_unknown()
             return 0
         report(name)
         return 1
@@ -77,8 +77,6 @@ def main(argv):
         if not ok(name):
             report(name)
             fail = 1
-        else:
-            warn_unknown()
     return fail
 
 

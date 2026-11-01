@@ -1,6 +1,16 @@
 {
-  "beschreibung": "Neue Branches nur als <Windows-Benutzer>/name (klein geschrieben), z. B. hp840g6/garmin-tokens. Geprüft vom Hook .githooks/pre-push beim Anlegen eines Branches auf GitHub. GitHub-Ruleset daraus erzeugen mit: py .githooks/branch_check.py --ruleset > .github/rulesets/branch-namen.json",
+  "beschreibung": "Neue Branches nur zweistufig als xxx/yyy: xxx = Präfix (z. B. feat, fix, Windows-Benutzer), yyy = funktionaler Name. Flache Namen wie fix-garmin-tokens sind verboten. Geprüft vom Hook .githooks/pre-push; GitHub-Ruleset daraus erzeugen mit: py .githooks/branch_check.py --ruleset > .github/rulesets/branch-namen.json",
   "erlaubt": ["main"],
-  "benutzer": ["hp840g6"],
-  "name_muster": "^[a-z0-9][a-z0-9._-]*$"
+  "praefix_muster": "^[a-z0-9][a-z0-9._-]*$",
+  "name_muster": "^[a-z0-9][a-z0-9._-]*$",
+  "praefix_beispiele": {
+    "feat": "neue Funktion",
+    "fix": "Fehlerbehebung",
+    "chore": "Pflege, Abhängigkeiten",
+    "docs": "Dokumentation",
+    "refactor": "Umbau ohne neue Funktion",
+    "test": "Tests",
+    "ci": "Workflow, Build",
+    "<windows-benutzer>": "eigener Arbeitsstand, z. B. hp840g6"
+  }
 }

@@ -9,7 +9,7 @@
       ],
       "exclude": [
         "refs/heads/main",
-        "refs/heads/hp840g6/*"
+        "refs/heads/*/*"
       ]
     }
   },
