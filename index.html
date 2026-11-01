@@ -294,11 +294,11 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 .wodlg[hidden]{display:none}
 .wodbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;width:min(760px,100%)}
 .wodbox .bighead{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px}.wodbox h2{margin:0;font-size:18px}
-.tp-evs{display:flex;flex-direction:column;gap:4px;min-width:min(100%,360px)}
-.tp-evr{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 12px;align-items:baseline;font-size:12.5px;padding:3px 10px;border-radius:8px;color:var(--pred);background:color-mix(in srgb,var(--pred) 8%,transparent)}
+.tp-evs{display:grid;grid-template-columns:minmax(0,auto) auto auto auto;gap:4px 0;min-width:min(100%,360px)}
+.tp-evr{grid-column:1/-1;display:grid;grid-template-columns:subgrid;column-gap:14px;align-items:baseline;font-size:12.5px;padding:3px 10px;border-radius:8px;color:var(--pred);background:color-mix(in srgb,var(--pred) 8%,transparent)}
 .tp-evr.next{background:color-mix(in srgb,var(--pred) 18%,transparent);font-weight:600}.tp-evr.prim .n::after{content:" ★"}
-.tp-evr .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tp-evr .d{color:var(--muted);font-weight:400;font-size:12px}.tp-evr .r{text-align:right;white-space:nowrap;font-family:var(--f-mono)}
-.tp-evr .r small{color:var(--muted);font-size:11px}
+.tp-evr .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tp-evr .d{color:var(--muted);font-weight:400;font-size:12px;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tp-evr .r,.tp-evr .w{text-align:right;white-space:nowrap;font-family:var(--f-mono)}.tp-evr .w{color:var(--muted);font-size:11px;font-weight:400}
 .tp-ev{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--pred) 14%,transparent);color:var(--pred);font-weight:500}
 .ck{flex-shrink:0;width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;border:1.6px solid color-mix(in srgb,var(--c,var(--muted)) 70%,transparent);color:transparent}
 .ck svg{width:11px;height:11px}
@@ -1215,7 +1215,7 @@ function renderTraining(view){
   const upEv=(P.events||[]).filter(e=>e.d>=tk&&e.d<=yr).sort((a,b)=>a.d<b.d?-1:1);
   const inTxt=n=>n===0?"heute":n===1?"morgen":`in ${n} Tagen`;
   const evList=upEv.length?`<div class="tp-evs" aria-label="Kommende Wettkämpfe">${upEv.map((e,i)=>{const n=dTo(e.d);
-    return`<div class="tp-evr${i?"":" next"}${e.primary?" prim":""}" title="${[e.loc,e.km?nf(e.km,1)+" km":""].filter(Boolean).join(" · ").replace(/"/g,"&quot;")}"><span class="n">🏁 ${e.name}</span><span class="d">${dl(e.d,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</span><span class="r">${inTxt(n)}${n>=14?` <small>(${Math.round(n/7)} Wo)</small>`:""}</span></div>`;}).join("")}</div>`:"";
+    return`<div class="tp-evr${i?"":" next"}${e.primary?" prim":""}" title="${[e.loc,e.km?nf(e.km,1)+" km":""].filter(Boolean).join(" · ").replace(/"/g,"&quot;")}"><span class="n">🏁 ${e.name}</span><span class="d">${dl(e.d,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</span><span class="r">${inTxt(n)}</span><span class="w">${n>=14?`${Math.round(n/7)} Wo`:""}</span></div>`;}).join("")}</div>`:"";
   const smooth=matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth";
   const chev=d=>`<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   view.append(h(`<section class="panel" id="tp-day"></section>`));
