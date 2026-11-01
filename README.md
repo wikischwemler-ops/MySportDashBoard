@@ -61,9 +61,9 @@ Die Adresse steht nach dem Lauf unter **Settings → Pages**. Passwort eingeben,
 
 ## Branch-Namen
 Neue Branches nur zweistufig als `xxx/yyy`: `xxx` = Präfix (z. B. `feat`, `fix`, `docs` oder der Windows-Benutzer wie `hp840g6`), `yyy` = funktionaler Name. Beispiele: `fix/garmin-tokens`, `feat/garmin-sync-workflow`, `hp840g6/hf-zonen`. Flache Namen wie `fix-garmin-tokens` und tiefere wie `feat/a/b` werden beim Anlegen abgelehnt; schon vorhandene Branches lassen sich weiter pushen und löschen.
-- **Regeln:** `.githooks/branch-rules.json` (`erlaubt` wie `main`, `praefix_muster`, `name_muster`, `praefix_beispiele` für die Meldung).
+- **Regeln:** `.githooks/branch-rules.json` (englisch: `allowed` wie `main`, `prefix_pattern`, `name_pattern`, `prefix_examples` für die Meldung).
 - **Lokal beim Push:** einmal je Klon `tools\git_hooks_einrichten.bat` ausführen (oder `git config core.hooksPath .githooks`). Danach bricht `git push` bei falschem Namen ab und zeigt den passenden Umbenennen-Befehl.
-- **Auf GitHub (verbindlich, auch ohne Hook):** Settings → Rules → Rulesets → New ruleset → **Import a ruleset** → `.github/rulesets/branch-namen.json`. Nach Änderungen an den Regeln neu erzeugen: `py .githooks/branch_check.py --ruleset > .github/rulesets/branch-namen.json`, dann das Ruleset auf GitHub ersetzen.
+- **Auf GitHub (verbindlich, auch ohne Hook):** Settings → Rules → Rulesets → New ruleset → **Import a ruleset** → `.github/rulesets/branch-names.json`. Nach Änderungen an den Regeln neu erzeugen: `py .githooks/branch_check.py --ruleset > .github/rulesets/branch-names.json`, dann das Ruleset auf GitHub ersetzen.
 - Einzelnen Namen prüfen: `py .githooks/branch_check.py --name hp840g6/garmin-tokens`
 
 ## Dateien

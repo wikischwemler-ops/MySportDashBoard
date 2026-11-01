@@ -1,16 +1,16 @@
 {
-  "beschreibung": "Neue Branches nur zweistufig als xxx/yyy: xxx = Präfix (z. B. feat, fix, Windows-Benutzer), yyy = funktionaler Name. Flache Namen wie fix-garmin-tokens sind verboten. Geprüft vom Hook .githooks/pre-push; GitHub-Ruleset daraus erzeugen mit: py .githooks/branch_check.py --ruleset > .github/rulesets/branch-namen.json",
-  "erlaubt": ["main"],
-  "praefix_muster": "^[a-z0-9][a-z0-9._-]*$",
-  "name_muster": "^[a-z0-9][a-z0-9._-]*$",
-  "praefix_beispiele": {
-    "feat": "neue Funktion",
-    "fix": "Fehlerbehebung",
-    "chore": "Pflege, Abhängigkeiten",
-    "docs": "Dokumentation",
-    "refactor": "Umbau ohne neue Funktion",
-    "test": "Tests",
-    "ci": "Workflow, Build",
-    "<windows-benutzer>": "eigener Arbeitsstand, z. B. hp840g6"
+  "description": "New branches must use two levels: prefix/name. prefix = e.g. feat, fix or your Windows user ID; name = functional name. Flat names like fix-garmin-tokens are rejected. Checked by the hook .githooks/pre-push. Generate the GitHub ruleset with: py .githooks/branch_check.py --ruleset > .github/rulesets/branch-names.json",
+  "allowed": ["main"],
+  "prefix_pattern": "^[a-z0-9][a-z0-9._-]*$",
+  "name_pattern": "^[a-z0-9][a-z0-9._-]*$",
+  "prefix_examples": {
+    "feat": "new feature",
+    "fix": "bug fix",
+    "chore": "maintenance, dependencies",
+    "docs": "documentation",
+    "refactor": "restructuring without new features",
+    "test": "tests",
+    "ci": "workflow, build",
+    "<windows-user>": "personal work, e.g. hp840g6"
   }
 }

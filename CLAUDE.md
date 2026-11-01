@@ -74,7 +74,7 @@ Gesamt seit 14.10.2022 (Stand früherer Chat): ca. 6.700 km Laufen, 7.846 km Rad
 - Norwegisches 4x4 (VO2max): Workouts mit Präfix `NTNU_` benennen, Suffix frei wählbar (z. B. `NTNU_4x4`); regelmäßig einplanen.
 - `index.html` nur ändern, wenn der Nutzer ausdrücklich eine Layout-Erweiterung verlangt; sonst nur Export/Daten anpassen.
 - Persönliche Daten und Tokens nie committen oder unverschlüsselt veröffentlichen.
-- Neue Branch-Namen nur zweistufig `xxx/yyy`, klein geschrieben: `xxx` = Präfix (`feat`, `fix`, `docs` … oder Windows-Benutzer), `yyy` = funktionaler Name, z. B. `fix/garmin-tokens`. Flach verboten. Regeln in `.githooks/branch-rules.json`, Prüfung `.githooks/branch_check.py` per pre-push-Hook (`git config core.hooksPath .githooks`), GitHub-Ruleset-Vorlage `.github/rulesets/branch-namen.json` (daraus erzeugt mit `--ruleset`).
+- Neue Branch-Namen nur zweistufig `xxx/yyy`, klein geschrieben: `xxx` = Präfix (`feat`, `fix`, `docs` … oder Windows-Benutzer), `yyy` = funktionaler Name, z. B. `fix/garmin-tokens`. Flach verboten. Regeln (englisch) in `.githooks/branch-rules.json`, Hook-Meldung englisch, Prüfung `.githooks/branch_check.py` per pre-push-Hook (`git config core.hooksPath .githooks`), GitHub-Ruleset-Vorlage `.github/rulesets/branch-names.json` (daraus erzeugt mit `--ruleset`).
 
 ## Rennkalender und Trainingsziele (Okt 2026 bis Aug 2027)
 

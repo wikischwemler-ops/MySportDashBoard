@@ -1,5 +1,5 @@
 {
-  "name": "Branch-Namen",
+  "name": "Branch names",
   "target": "branch",
   "enforcement": "active",
   "conditions": {

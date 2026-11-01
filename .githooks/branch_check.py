@@ -1,29 +1,29 @@
-"""Prüft Branch-Namen gegen .githooks/branch-rules.json: neue Branches nur zweistufig als xxx/yyy.
+"""Checks branch names against .githooks/branch-rules.json: new branches must use two levels, prefix/name.
 
-xxx = Präfix (feat, fix, Windows-Benutzer …), yyy = funktionaler Name.
-Als pre-push-Hook: liest die Git-Zeilen von stdin, Exitcode 1 bei unerlaubtem neuem Branch.
-  --name NAME   einen Namen prüfen
-  --ruleset     GitHub-Ruleset (JSON) aus den Regeln ausgeben
+prefix = feat, fix, Windows user ID, ...; name = functional name.
+As pre-push hook: reads Git's lines from stdin, exit code 1 for a disallowed new branch.
+  --name NAME   check a single name
+  --ruleset     print the GitHub ruleset (JSON) derived from the rules
 """
 import json, os, re, sys
 from pathlib import Path
 
 RULES = json.loads((Path(__file__).parent / "branch-rules.json").read_text("utf-8"))
-TYPES = [p for p in RULES["praefix_beispiele"] if not p.startswith("<")]
+TYPES = [p for p in RULES["prefix_examples"] if not p.startswith("<")]
 ME = re.sub(r"[^a-z0-9._-]+", "-", (os.environ.get("USERNAME") or os.environ.get("USER") or "").lower())
 ZERO = "0" * 40
 
 
 def ok(name):
-    if name in RULES["erlaubt"]:
+    if name in RULES["allowed"]:
         return True
     p, sep, rest = name.partition("/")
-    return bool(sep) and re.match(RULES["praefix_muster"], p) is not None and re.match(RULES["name_muster"], rest) is not None
+    return bool(sep) and re.match(RULES["prefix_pattern"], p) is not None and re.match(RULES["name_pattern"], rest) is not None
 
 
 def suggest(name):
     low = re.sub(r"[^a-z0-9._/-]+", "-", name.lower()).strip("-/")
-    if "/" in low:                                   # zu tief: Rest zusammenziehen
+    if "/" in low:                                   # too deep: join the rest
         p, _, rest = low.partition("/")
         return f"{p}/{rest.replace('/', '-')}"
     for t in TYPES:                                  # fix-garmin-tokens -> fix/garmin-tokens
@@ -35,23 +35,23 @@ def suggest(name):
 
 def report(name):
     tip = suggest(name)
-    bsp = "\n".join(f"    {p:<20}{d}" for p, d in RULES["praefix_beispiele"].items())
+    ex = "\n".join(f"    {p:<18}{d}" for p, d in RULES["prefix_examples"].items())
     print(f"""
-Push abgelehnt: Branch-Name "{name}" ist nicht erlaubt.
-  Neue Branches nur zweistufig: xxx/yyy  (xxx = Präfix, yyy = funktionaler Name)
-  Präfix-Beispiele:
-{bsp}
-  Erlaubte Zeichen: Kleinbuchstaben, Ziffern, Punkt, Bindestrich, Unterstrich; genau ein "/".
-  Regeln: .githooks/branch-rules.json
-  Vorschlag:  git branch -m "{name}" "{tip}"
-              git push -u origin "{tip}"
+Push rejected: branch name "{name}" is not allowed.
+  New branches must use two levels: prefix/name  (prefix = type or user ID, name = functional name)
+  Prefix examples:
+{ex}
+  Allowed characters: lowercase letters, digits, dot, hyphen, underscore; exactly one "/".
+  Rules: .githooks/branch-rules.json
+  Suggestion:  git branch -m "{name}" "{tip}"
+               git push -u origin "{tip}"
 """, file=sys.stderr)
 
 
 def ruleset():
-    # GitHub-Muster: "*" umfasst keinen "/", also genau zwei Stufen
-    exclude = [f"refs/heads/{b}" for b in RULES["erlaubt"]] + ["refs/heads/*/*"]
-    return {"name": "Branch-Namen", "target": "branch", "enforcement": "active",
+    # GitHub patterns: "*" does not match "/", so exactly two levels
+    exclude = [f"refs/heads/{b}" for b in RULES["allowed"]] + ["refs/heads/*/*"]
+    return {"name": "Branch names", "target": "branch", "enforcement": "active",
             "conditions": {"ref_name": {"include": ["~ALL"], "exclude": exclude}},
             "rules": [{"type": "creation"}], "bypass_actors": []}
 
@@ -63,14 +63,14 @@ def main(argv):
     if "--name" in argv:
         name = argv[argv.index("--name") + 1]
         if ok(name):
-            print(f'"{name}" ist erlaubt.')
+            print(f'"{name}" is allowed.')
             return 0
         report(name)
         return 1
     fail = 0
     for line in sys.stdin:
         p = line.split()
-        # nur neu angelegte Branches prüfen (wie das GitHub-Ruleset); Löschen und Aktualisieren bleiben erlaubt
+        # only check newly created branches (like the GitHub ruleset); deleting and updating stay allowed
         if len(p) != 4 or not p[2].startswith("refs/heads/") or p[1] == ZERO or p[3] != ZERO:
             continue
         name = p[2][len("refs/heads/"):]
