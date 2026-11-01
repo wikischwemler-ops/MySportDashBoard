@@ -290,6 +290,11 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 .tp-head{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between;margin-bottom:12px}
 .tp-head h2{font-family:var(--f-display);font-weight:600;font-size:21px;margin:0}
 .tp-head .sub{margin:0}
+.tp-evs{display:flex;flex-direction:column;gap:4px;min-width:min(100%,360px)}
+.tp-evr{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 12px;align-items:baseline;font-size:12.5px;padding:3px 10px;border-radius:8px;color:var(--pred);background:color-mix(in srgb,var(--pred) 8%,transparent)}
+.tp-evr.next{background:color-mix(in srgb,var(--pred) 18%,transparent);font-weight:600}.tp-evr.prim .n::after{content:" ★"}
+.tp-evr .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tp-evr .d{color:var(--muted);font-weight:400;font-size:12px}.tp-evr .r{text-align:right;white-space:nowrap;font-family:var(--f-mono)}
+.tp-evr .r small{color:var(--muted);font-size:11px}
 .tp-ev{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--pred) 14%,transparent);color:var(--pred);font-weight:500}
 .ck{flex-shrink:0;width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;border:1.6px solid color-mix(in srgb,var(--c,var(--muted)) 70%,transparent);color:transparent}
 .ck svg{width:11px;height:11px}
@@ -1201,7 +1206,12 @@ function renderTraining(view){
   const dl=(k,o)=>new Date(k+"T12:00:00").toLocaleDateString("de-DE",o||{weekday:"long",day:"numeric",month:"long"});
   const pi=x=>`<div class="pi ${x.st==="miss"?"miss":""}" style="--c:var(${SP[x.sp].v})">${ckHtml(x)}<div><span class="n">${x.name}</span>${pQty(x)?`<span class="q">${pQty(x)}</span>`:""}</div></div>`;
   const evb=e=>`<div class="evb" title="${(e.loc||"").replace(/"/g,"&quot;")}">🏁 ${e.name}</div>`;
-  const nextEv=(P.events||[]).find(e=>e.d>=tk);
+  // kommende Wettkämpfe bis ein Jahr voraus, nach Datum
+  const dTo=k=>Math.round((new Date(k+"T12:00:00")-new Date(tk+"T12:00:00"))/864e5),yr=isoD(new Date(Date.now()+365*864e5));
+  const upEv=(P.events||[]).filter(e=>e.d>=tk&&e.d<=yr).sort((a,b)=>a.d<b.d?-1:1);
+  const inTxt=n=>n===0?"heute":n===1?"morgen":`in ${n} Tagen`;
+  const evList=upEv.length?`<div class="tp-evs" aria-label="Kommende Wettkämpfe">${upEv.map((e,i)=>{const n=dTo(e.d);
+    return`<div class="tp-evr${i?"":" next"}${e.primary?" prim":""}" title="${[e.loc,e.km?nf(e.km,1)+" km":""].filter(Boolean).join(" · ").replace(/"/g,"&quot;")}"><span class="n">🏁 ${e.name}</span><span class="d">${dl(e.d,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</span><span class="r">${inTxt(n)}${n>=14?` <small>(${Math.round(n/7)} Wo)</small>`:""}</span></div>`;}).join("")}</div>`:"";
   const smooth=matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth";
   const chev=d=>`<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   view.append(h(`<section class="panel" id="tp-day"></section>`));
@@ -1210,10 +1220,9 @@ function renderTraining(view){
   const pick=k=>{TP.day=k;drawDay();drawWeek();drawMonth();};
   function drawDay(){
     const k=TP.day,L=byDay[k]||[],E=evDay[k]||[],box=document.getElementById("tp-day");
-    const days=nextEv?Math.round((new Date(nextEv.d+"T12:00:00")-new Date(tk+"T12:00:00"))/864e5):0;
     const nxt=L.length?null:P.items.find(x=>x.d>k);
     box.innerHTML=`<div class="tp-head"><div><h2>${k===tk?"Heute zu tun":dl(k)}</h2><div class="sub">${k===tk?dl(k):k<tk?"Vergangener Tag":"Geplant"}${k!==tk?` · <button class="btn" id="tp-today" style="padding:2px 8px">zu heute</button>`:""}</div></div>
-      ${nextEv?`<span class="tp-ev">🏁 ${nextEv.name} · ${days===0?"heute":days===1?"morgen":`in ${days} Tagen`}</span>`:""}</div>
+      ${evList}</div>
       ${E.map(e=>`<div class="tp-ev" style="margin-bottom:10px">🏁 Wettkampf: ${e.name}${e.km?` · ${nf(e.km,1)} km`:""}${e.loc?` · ${e.loc}`:""}</div>`).join("")}
       ${L.length?`<div class="tp-today">${L.map(x=>`<article class="wo ${x.st}" style="--c:var(${SP[x.sp].v})">
           <h3>${ckHtml(x)}${x.name}</h3>
