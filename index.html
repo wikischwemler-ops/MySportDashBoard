@@ -528,9 +528,10 @@ function renderOverview(view){
 
   const g2=h(`<div class="grid2"></div>`);view.append(g2);
   for(const id of ["health.rhr","health.hrv","fit.vo2run","fit.ctl","health.weight"].filter(i=>DATA.series[i])){
-    const s=DATA.series[id];const b=h(`<section class="panel"><div class="ph"><h2>${s.label}</h2><span class="right"><span class="note">${unitOf(s)}</span>${bigBtn("series:"+id)}</span></div><div class="chartbox sm"><canvas></canvas></div></section>`);
-    g2.append(b);const o2=baseOpts();o2.scales.y=yAxis(s);
-    const p2=pts(s);charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:[lineDs(s,p2,col(s.group),{pointRadius:0}),{...lineDs(s,movAvg(p2,8),css("--ink"),{fill:false,borderWidth:1.4,pointRadius:0,lbl:"Ø 8 Wochen"}),_noTrend:true}]},options:o2}));
+    const s=DATA.series[id],p2=pts(s),x0=p2.length?p2[0].x:null,late=x0!=null&&x0>startTs()+90*864e5;   // Daten beginnen deutlich später als der Zeitraum
+    const b=h(`<section class="panel"><div class="ph"><h2>${s.label}</h2><span class="right"><span class="note">${unitOf(s)}${late?` · Daten ab ${tsLabel(x0)}, ${p2.length} ${s.freq==="week"?"Wochen":"Monate"}`:""}</span>${bigBtn("series:"+id)}</span></div><div class="chartbox sm"><canvas></canvas></div></section>`);
+    g2.append(b);const o2=baseOpts();o2.scales.y=yAxis(s);if(late)o2.scales.x.min=x0;
+    charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:[lineDs(s,p2,col(s.group),{pointRadius:p2.length<30?2.5:0}),{...lineDs(s,movAvg(p2,8),css("--ink"),{fill:false,borderWidth:1.4,pointRadius:0,lbl:"Ø 8 Wochen"}),_noTrend:true}]},options:o2}));
   }
 }
 
