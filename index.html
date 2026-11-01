@@ -311,6 +311,14 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 .wo .meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums}
 .wo .meta b{color:var(--ink);font-weight:600}
 .wo .desc{font-size:13px;color:var(--muted);margin:0}
+.scs{display:flex;flex-direction:column;gap:8px}
+.sc{border:1px solid var(--line);border-left:4px solid var(--k,var(--bike));border-radius:8px;padding:9px 12px;background:var(--panel)}
+.sc.warm{--k:var(--bad)}.sc.run{--k:var(--bike)}.sc.rec{--k:var(--muted)}.sc.cool{--k:var(--good)}
+.sc-t{font-size:12.5px;font-weight:600;color:var(--k)}
+.sc-v{display:flex;flex-wrap:wrap;gap:6px 40px;margin:6px 0 2px}.sc-v b{display:block;font:600 17px var(--f-mono);font-variant-numeric:tabular-nums}.sc-v small{font-size:11.5px;color:var(--muted)}
+.sc-n{border-top:1px solid var(--line);margin-top:8px;padding-top:7px;font-size:12.5px;color:var(--muted)}.sc-n b{color:var(--ink);font-weight:500;font-family:var(--f-mono);font-size:12px}
+.sc-rep{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:8px 10px 10px}
+.sc-rh{display:flex;align-items:center;gap:7px;font:600 13px var(--f-mono);margin:0 0 8px 2px}.sc-rh svg{width:16px;height:16px}
 .steps{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px;font-size:13px}
 .steps li{display:grid;grid-template-columns:7.2em 6.4em minmax(0,1fr);gap:8px;align-items:baseline;padding:4px 0;border-top:1px solid var(--line)}
 .steps li:first-child{border-top:0}
@@ -1198,8 +1206,14 @@ const pQty=x=>{const p=[];if(x.m)p.push(x.sp==="swim"||x.m<1000?nf(x.m,0)+" m":n
   if(x.dur&&!(x.sp==="swim"&&x.m))p.push(x.dur>=3600?`${Math.floor(x.dur/3600)}:${pad(Math.round(x.dur%3600/60))} h`:Math.round(x.dur/60)+" min");return p.join(" + ");};
 const ckHtml=x=>`<span class="ck ${x.st}" title="${x.st==="done"?(x.guess?"erledigt (Aktivität am selben Tag)":"erledigt (mit Workout verknüpft)"):x.st==="miss"?"nicht erledigt":"geplant"}">${CKSVG}</span>`;
 const hiTgt=t=>t.replace(/(Z\d(?:-Z\d)?\s*\d+-\d+\s*bpm|\d+-\d+\s*bpm|\d:\d\d-\d:\d\d\s*\/\S+)/g,"<b>$1</b>");
-const stepsHtml=L=>`<ul class="steps">${L.map(s=>s.rep?`<li class="rep"><span>${s.rep} ×</span>${stepsHtml(s.steps)}</li>`
-  :`<li><span class="st">${s.t}</span><span class="en">${s.end||""}</span><span class="tg">${s.note?hiTgt(s.note)+(s.tgt&&!s.note.includes(s.tgt.replace(/^Z\d /,""))?` · <b>${s.tgt}</b>`:""):s.tgt?`<b>${s.tgt}</b>`:""}</span></li>`).join("")}</ul>`;
+// Schritte als Karten wie in Garmin Connect: Art, Dauer/Distanz, Intensitätsziel, Notiz; Wiederholungen als Block
+const STK={Einlaufen:"warm",Auslaufen:"cool",Erholung:"rec",Pause:"rec"};
+const stepCard=s=>{const k=STK[s.t]||"run",tg=s.tgt||((s.note||"").match(/(?:Z\d(?:-Z\d)?\s*)?\d+-\d+\s*bpm|\d:\d\d-\d:\d\d\s*\/\S+/)||[""])[0];
+  const zn=(tg.match(/^Z\d(?:-Z\d)?/)||(s.note||"").match(/Z\d(?:-Z\d)?(?=\s*\d+-\d+\s*bpm)/)||[""])[0],tv=tg.replace(/^Z\d(?:-Z\d)?\s*/,"").replace(/(\d)-(\d)/,"$1–$2");
+  const el=/\sk?m$/.test(s.end||"")?"Distanz":/lap/i.test(s.end||"")?"Ende":"Dauer";
+  return`<div class="sc ${k}"><div class="sc-t">${s.t}</div><div class="sc-v">${s.end?`<div><b>${s.end}</b><small>${el}</small></div>`:""}${tv?`<div><b>${tv}</b><small>Intensitätsziel${zn?" · "+zn:""}</small></div>`:""}</div>
+    ${s.note?`<div class="sc-n">${hiTgt(s.note)}</div>`:""}</div>`;};
+const stepsHtml=L=>`<div class="scs">${L.map(s=>s.rep?`<div class="sc-rep"><div class="sc-rh"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13.5 6.5A5.5 5.5 0 0 0 3.2 4.6M2.5 9.5a5.5 5.5 0 0 0 10.3 1.9M3 1.8v3h3M13 14.2v-3h-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>${s.rep}×</div>${stepsHtml(s.steps)}</div>`:stepCard(s)).join("")}</div>`;
 function renderTraining(view){
   const P=DATA.plan;
   if(!P||!P.items){view.append(h(`<div class="msg">Noch kein Trainingsplan in data.json. Der nächste Export holt die geplanten Workouts aus dem Garmin-Kalender.</div>`));return;}
