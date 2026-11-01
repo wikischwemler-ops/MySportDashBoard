@@ -82,6 +82,22 @@ tr.grp td{border-top:2px solid var(--line)}
 .ro-c{border:1px solid var(--line);border-radius:9px;padding:10px 12px;min-width:0}
 .ro-c h3{font-size:14.5px;font-weight:600;margin:0}.ro-c .ph{margin-bottom:2px;align-items:flex-start}
 .ro-c .right{display:flex;gap:10px;align-items:center}
+.ts .ph .right{flex-wrap:wrap;gap:8px}
+.ts-top{display:grid;grid-template-columns:minmax(200px,1.4fr) repeat(3,minmax(120px,1fr));gap:12px 20px;align-items:center;margin-bottom:14px}
+@media (max-width:760px){.ts-top{grid-template-columns:1fr 1fr}.ts-st{grid-column:1/-1}}
+.ts-st{display:flex;gap:14px;align-items:center}.ts-st b{display:block;font:600 26px/1.15 var(--f-body);color:var(--c)}.ts-st small{color:var(--muted);font-size:12.5px}
+.ts-dot{flex-shrink:0;width:42px;height:42px;border-radius:50%;background:var(--c)}
+.ts-k small{display:block;font-size:11.5px;color:var(--muted)}.ts-k b{font:600 22px var(--f-mono)}.ts-k span{display:block;font-size:11.5px;color:var(--muted)}
+.ts-gw{display:flex;justify-content:center}.ts-g{width:120px;height:66px}.ts-gv{font:600 17px var(--f-mono);fill:var(--ink)}.ts-gl{font:500 9px var(--f-mono);fill:var(--muted)}
+.ts-sp{display:block;width:100%;height:26px;margin-top:4px}
+.ts-band{display:flex;height:16px;border-radius:4px;overflow:hidden;gap:1px}.ts-band i{flex:1;background:var(--c,var(--soft))}
+.ts-leg{display:flex;flex-wrap:wrap;gap:4px 14px;margin:7px 0 14px;font-size:12px;color:var(--muted)}.ts-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--c);margin-right:5px;vertical-align:-1px}
+.ts-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px 28px}
+@media (max-width:860px){.ts-grid{grid-template-columns:1fr}}
+.ts-h{margin:0 0 8px;font-size:13.5px;font-weight:600}.ts-h span{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
+.ts-lf{display:grid;grid-template-columns:96px 52px minmax(0,1fr);gap:10px;align-items:center;margin:10px 0;font-size:13px}.ts-lf b{font:600 14px var(--f-mono);text-align:right}
+.ts-lt{position:relative;height:12px}.ts-lt i{position:absolute;left:0;top:2px;bottom:2px;background:var(--c);border-radius:6px}
+.ts-lt u{position:absolute;top:0;bottom:0;border:1.5px dashed var(--muted);border-radius:7px;text-decoration:none}
 .hz-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px 28px;align-items:start}
 @media (max-width:700px){.hz-wrap{grid-template-columns:1fr}}
 .hz-rows{display:flex;flex-direction:column;gap:9px;min-width:0}
@@ -511,6 +527,7 @@ function volChart(canvas){
 function renderOverview(view){
   view.append(h(`<div class="kpis">${kpi("run.km","Laufen km")}${kpi("bike.km","Rad km")}${kpi("swim.km","Schwimmen km")}${kpi("fit.vo2run","VO2max Laufen")}${kpi("health.rhr","Ruhepuls Ø")}${kpi("health.hrv","HRV Ø")}</div>`));
   renderHrZones(view);
+  renderTrainStat(view);
   renderRunOpt(view);
   const p=h(`<section class="panel"><div class="ph"><h2>Trainingszeit pro Monat</h2><span class="right"><span class="note">Stunden je Disziplin</span>${bigBtn("vol")}</span></div><div class="chartbox"><canvas></canvas></div></section>`);
   view.append(p);volChart(p.querySelector("canvas"));
@@ -632,6 +649,68 @@ function renderHrZones(view){
       ${lt?`<p class="ro-note">Gestrichelte Linie = Laktatschwelle ${lt} bpm. „Laktatschwelle“ leitet die Zonen nach Joe Friel aus dem Schwellenpuls ab: Z1 unter 85 %, Z2 85–89 %, Z3 90–94 %, Z4 95–99 %, Z5 ab 100 % der Laktatschwelle. „Garmin“ zeigt die in Garmin Connect eingestellten Zonen.</p>`:""}`;
     sec.querySelectorAll("[data-hz]").forEach(b=>b.onclick=()=>{HZSEL=b.dataset.hz;draw();});
     sec.querySelectorAll("[data-hzb]").forEach(b=>b.onclick=()=>{HZB=b.dataset.hzb;draw();});
+  };
+  draw();
+}
+// ---- Trainingsstatus (Garmin, tageweise): Status, akute Last mit Optimalbereich, ACWR, Load-Fokus, VO2max ----
+const TSLV={DETRAINING:1,RECOVERY:2,UNPRODUCTIVE:3,MAINTAINING:4,PRODUCTIVE:5,PEAKING:6,OVERREACHING:7,STRAINED:8};
+const ACWR_DE={LOW:"niedrig",OPTIMAL:"optimal",HIGH:"hoch",VERY_HIGH:"sehr hoch"};
+let TSW=28;   // Fenster in Tagen
+function acwrGauge(v,st){
+  // Halbkreis 0–2,0: unter 0,8 niedrig, 0,8–1,3 optimal, 1,3–1,5 hoch, darüber sehr hoch
+  const R=46,cx=60,cy=56,pt=a=>{const t=Math.PI*(1-Math.min(2,Math.max(0,a))/2);return[cx+R*Math.cos(t),cy-R*Math.sin(t)];};
+  const arc=(a,b,c)=>{const[p,q]=[pt(a),pt(b)];return`<path d="M${p[0].toFixed(1)} ${p[1].toFixed(1)}A${R} ${R} 0 0 1 ${q[0].toFixed(1)} ${q[1].toFixed(1)}" stroke="${c}" stroke-width="8" fill="none"/>`;};
+  const m=v!=null?pt(v):null;
+  return`<svg viewBox="0 0 120 66" class="ts-g" role="img" aria-label="ACWR ${v??"–"}">${arc(0,.78,"var(--soft)")}${arc(.82,1.28,"var(--good)")}${arc(1.32,1.48,"var(--fit)")}${arc(1.52,2,"var(--bad)")}
+    ${m?`<circle cx="${m[0].toFixed(1)}" cy="${m[1].toFixed(1)}" r="6" fill="${st==="OPTIMAL"?"var(--good)":st==="LOW"?"var(--muted)":st==="HIGH"?"var(--fit)":"var(--bad)"}" stroke="var(--panel)" stroke-width="2"/>`:""}
+    <text x="60" y="50" text-anchor="middle" class="ts-gv">${v!=null?nf(v,1):"–"}</text><text x="60" y="63" text-anchor="middle" class="ts-gl">ACWR</text></svg>`;
+}
+function spark(vals,c){
+  const v=vals.filter(x=>x!=null);if(v.length<2)return"";const lo=Math.min(...v),hi=Math.max(...v),r=hi-lo||1,n=vals.length;
+  const p=vals.map((x,i)=>x==null?null:`${(i/(n-1)*100).toFixed(1)},${(28-(x-lo)/r*24).toFixed(1)}`).filter(Boolean).join(" ");
+  return`<svg viewBox="0 0 100 30" preserveAspectRatio="none" class="ts-sp"><polyline points="${p}" fill="none" stroke="${c}" stroke-width="1.8" vector-effect="non-scaling-stroke"/></svg>`;
+}
+function renderTrainStat(view){
+  const T=DATA.trainstat;if(!T||!(T.days||[]).length)return;
+  const sec=h(`<section class="panel ts"></section>`);view.append(sec);let chart=null;
+  const draw=()=>{
+    if(chart){chart.destroy();charts.splice(charts.indexOf(chart),1);}
+    const D=T.days.slice(-TSW),cur=[...D].reverse().find(r=>r[1])||D[D.length-1],lv=TSLV[cur[1]]||0;
+    const dl=k=>{const p=k.split("-");return +p[2]+"."+(+p[1])+".";};
+    const vo=D.map(r=>r[8]),vo1=vo.find(x=>x!=null),vo2=[...vo].reverse().find(x=>x!=null),dv=vo1!=null&&vo2!=null?vo2-vo1:null;
+    const lf=T.lf,LFR=[["Anaerob","--other",6],["Aerob hoch","--run",3],["Aerob niedrig","--bike",0]];
+    const lfMax=lf?Math.max(...lf.filter(x=>x!=null))*1.08:1,lp=v=>(v/lfMax*100).toFixed(1);
+    const since=T.since?dl(T.since):"";
+    sec.innerHTML=`<div class="ph"><h2>Trainingsstatus</h2><span class="right"><span class="note">Garmin · tageweise · ${dl(D[0][0])} bis ${dl(D[D.length-1][0])}</span>
+      <div class="seg" role="group" aria-label="Zeitraum">${[[28,"4 Wo"],[56,"8 Wo"],[84,"12 Wo"]].map(([n,l])=>`<button data-tsw="${n}" aria-pressed="${TSW===n}">${l}</button>`).join("")}</div></span></div>
+    <div class="ts-top">
+      <div class="ts-st" style="--c:var(--st${lv})"><span class="ts-dot"></span><div><b>${STATUS[lv]||"kein Status"}</b><small>${since?"seit "+since:""}${T.lf_fb?` · Load-Fokus ${LF_FB[T.lf_fb]||T.lf_fb}`:""}</small></div></div>
+      <div class="ts-k"><small>Akute Last</small><b>${cur[2]??"–"}</b><span>Optimal ${cur[3]??"–"}–${cur[4]??"–"} · ${ACWR_DE[cur[7]]||cur[7]||""}</span></div>
+      <div class="ts-k ts-gw">${acwrGauge(cur[6],cur[7])}</div>
+      <div class="ts-k"><small>VO2max Laufen</small><b>${vo2!=null?nf(vo2,1):"–"}</b><span>${dv!=null?`${dv>=0?"+":"−"}${nf(Math.abs(dv),1)} im Zeitraum`:""}</span>${spark(vo,css("--fit"))}</div>
+    </div>
+    <div class="ts-band" aria-label="Status je Tag">${D.map(r=>`<i style="--c:var(--st${TSLV[r[1]]||0})" title="${dl(r[0])}: ${STATUS[TSLV[r[1]]]||"kein Status"}"></i>`).join("")}</div>
+    <div class="ts-leg">${[...new Set(D.map(r=>r[1]).filter(Boolean))].map(k=>`<span style="--c:var(--st${TSLV[k]})"><i></i>${STATUS[TSLV[k]]} · ${D.filter(r=>r[1]===k).length} T</span>`).join("")}</div>
+    <div class="ts-grid">
+      <div><h3 class="ts-h">Akute Last und Last je Tag</h3><div class="chartbox sm"><canvas></canvas></div></div>
+      ${lf?`<div><h3 class="ts-h">Load-Fokus <span>letzte 4 Wochen · gestrichelt = Optimalbereich</span></h3>${LFR.map(([l,c,i])=>`<div class="ts-lf" style="--c:var(${c})"><span>${l}</span><b>${lf[i]??"–"}</b><span class="ts-lt">${lf[i+1]!=null?`<u style="left:${lp(lf[i+1])}%;width:${lp(lf[i+2]-lf[i+1])}%"></u>`:""}<i style="width:${lp(lf[i]||0)}%"></i></span></div>`).join("")}
+        <p class="ro-note">${T.lf_fb?`Garmin: ${LF_FB[T.lf_fb]||T.lf_fb}. `:""}Jeder Balken sollte im gestrichelten Bereich enden.</p></div>`:""}
+    </div>`;
+    sec.querySelectorAll("[data-tsw]").forEach(b=>b.onclick=()=>{TSW=+b.dataset.tsw;draw();});
+    // Diagramm: Balken = Last der Aktivitäten je Tag, Linie = akute Last, grünes Band = Optimalbereich, gestrichelt = chronische Last
+    const L=D.map(r=>dl(r[0])),o=baseOpts();
+    o.scales={x:{type:"category",grid:{display:false},border:{display:false},ticks:{maxTicksLimit:8,autoSkip:true,maxRotation:0}},
+      y:{beginAtZero:true,grid:{color:css("--line")},border:{display:false},ticks:{maxTicksLimit:5}}};
+    o.plugins.legend={display:true,position:"bottom",labels:{boxWidth:14,boxHeight:3,filter:it=>!it.text.startsWith("_")}};
+    o.plugins.tooltip.mode="index";o.plugins.tooltip.filter=it=>!it.dataset.label.startsWith("_");o.plugins.tooltip.callbacks={};
+    const g=css("--good");
+    const c=chart=new Chart(sec.querySelector("canvas"),{data:{labels:L,datasets:[
+      {type:"line",label:"_min",data:D.map(r=>r[3]),borderColor:"transparent",pointRadius:0,fill:false,order:4},
+      {type:"line",label:"Optimalbereich",data:D.map(r=>r[4]),borderColor:"transparent",backgroundColor:g+"30",pointRadius:0,fill:"-1",order:4},
+      {type:"line",label:"Akute Last",data:D.map(r=>r[2]),borderColor:css("--ink"),backgroundColor:css("--ink"),borderWidth:2,pointRadius:TSW>28?0:2.5,tension:.25,order:1},
+      {type:"line",label:"Chronische Last",data:D.map(r=>r[5]),borderColor:css("--muted"),borderDash:[5,4],borderWidth:1.4,pointRadius:0,tension:.25,order:2},
+      {type:"bar",label:"Last je Tag",data:D.map(r=>r[9]||null),backgroundColor:css("--bike"),borderRadius:2,maxBarThickness:14,order:3}]},options:o});
+    charts.push(c);
   };
   draw();
 }
