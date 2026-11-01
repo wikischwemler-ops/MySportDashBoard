@@ -1,0 +1,15 @@
+{
+  "beschreibung": "Branch-Namen nur als typ/name, z. B. fix/garmin-tokens oder feat/garmin-sync-workflow. Geprüft vom Hook .githooks/pre-push; GitHub-Ruleset daraus erzeugen mit: py .githooks/branch_check.py --ruleset > .github/rulesets/branch-namen.json",
+  "erlaubt": ["main"],
+  "typen": {
+    "feat": "neue Funktion",
+    "fix": "Fehlerbehebung",
+    "chore": "Pflege, Abhängigkeiten",
+    "docs": "Dokumentation",
+    "refactor": "Umbau ohne neue Funktion",
+    "test": "Tests",
+    "ci": "Workflow, Build"
+  },
+  "name_muster": "^[a-z0-9][a-z0-9._-]*$",
+  "standard_typ": "feat"
+}

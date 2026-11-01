@@ -1,0 +1,9 @@
+#!/bin/sh
+# Branch-Namen nur als typ/name; Regeln in .githooks/branch-rules.json, Prüfung in branch_check.py.
+# Aktivieren (einmal je Klon): git config core.hooksPath .githooks  (oder tools/git_hooks_einrichten.bat)
+dir=$(dirname "$0")
+for py in py python3 python; do
+  if command -v $py >/dev/null 2>&1; then exec $py "$dir/branch_check.py"; fi
+done
+echo "pre-push: kein Python gefunden, Branch-Namen werden nicht geprüft." >&2
+exit 0

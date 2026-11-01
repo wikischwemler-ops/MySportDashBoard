@@ -50,7 +50,7 @@ Repository → **Actions → Garmin Sync → Run workflow**.
 Die Adresse steht nach dem Lauf unter **Settings → Pages**. Passwort eingeben, fertig. Mit „Auf diesem Gerät merken“ musst du es auf dem Handy nur einmal eingeben, mit „Sperren“ oben rechts löschst du es wieder.
 
 ## Wann wird synchronisiert?
-- **Jede Nacht um 0:00 Uhr** deutscher Zeit, Sommer- wie Winterzeit. GitHub startet geplante Läufe manchmal einige Minuten später.
+- **Alle 2 Stunden**, deutsche Zeit etwa 5:07 bis 23:07 Uhr (Sommerzeit 6:07 bis 0:07 Uhr), außerdem bei jedem Push nach `main`. GitHub startet geplante Läufe manchmal einige Minuten später.
 - **Sofort:** Actions → Garmin Sync → Run workflow. Mit „Alles neu laden“ wird der Zwischenspeicher ignoriert.
 
 ## Sicherheit
@@ -58,6 +58,13 @@ Die Adresse steht nach dem Lauf unter **Settings → Pages**. Passwort eingeben,
 - Zwischenspeicher im Workflow (`state.enc`) mit deinen Rohdaten und Tokens: ebenfalls mit deinem Passwort verschlüsselt.
 - Ändern von `DASHBOARD_PASSWORD`: Der nächste Lauf baut den Zwischenspeicher neu auf und lädt alles noch einmal.
 - Nie ins Repository: `.garminconnect\`, `cache\`, `data.json`, `activities.json` (steht in `.gitignore`).
+
+## Branch-Namen
+Neue Branches nur als `typ/name`, z. B. `fix/garmin-tokens` oder `feat/garmin-sync-workflow`. Flache Namen wie `fix-garmin-tokens` werden abgelehnt.
+- **Regeln:** `.githooks/branch-rules.json` (erlaubte Namen wie `main`, Typen `feat`, `fix`, `chore`, `docs`, `refactor`, `test`, `ci`, Muster für den Namen).
+- **Lokal beim Push:** einmal je Klon `tools\git_hooks_einrichten.bat` ausführen (oder `git config core.hooksPath .githooks`). Danach bricht `git push` bei falschem Namen ab und zeigt den passenden Umbenennen-Befehl.
+- **Auf GitHub (verbindlich, auch ohne Hook):** Settings → Rules → Rulesets → New ruleset → **Import a ruleset** → `.github/rulesets/branch-namen.json`. Nach Änderungen an den Regeln neu erzeugen: `py .githooks/branch_check.py --ruleset > .github/rulesets/branch-namen.json`, dann das Ruleset auf GitHub ersetzen.
+- Einzelnen Namen prüfen: `py .githooks/branch_check.py --name fix/garmin-tokens`
 
 ## Dateien
 | Datei | Zweck |

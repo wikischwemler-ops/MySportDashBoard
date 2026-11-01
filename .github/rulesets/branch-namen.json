@@ -1,0 +1,28 @@
+{
+  "name": "Branch-Namen",
+  "target": "branch",
+  "enforcement": "active",
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "~ALL"
+      ],
+      "exclude": [
+        "refs/heads/main",
+        "refs/heads/feat/*",
+        "refs/heads/fix/*",
+        "refs/heads/chore/*",
+        "refs/heads/docs/*",
+        "refs/heads/refactor/*",
+        "refs/heads/test/*",
+        "refs/heads/ci/*"
+      ]
+    }
+  },
+  "rules": [
+    {
+      "type": "creation"
+    }
+  ],
+  "bypass_actors": []
+}
