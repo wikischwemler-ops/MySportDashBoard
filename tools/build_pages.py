@@ -252,7 +252,9 @@ def main():
     (SITE / "site.json").write_text(json.dumps({
         "encrypted": True, "kdf": "PBKDF2-SHA256", "iterations": ITER, "salt": base64.b64encode(salt).decode(),
         "check": base64.b64encode(check).decode(), "generated_at": data["meta"].get("generated_at"),
-        "details": n, "activities": len(acts)}), "utf-8")
+        "details": n, "activities": len(acts),
+        # für den Sync-Knopf im Dashboard (Workflow über die GitHub-API starten)
+        "repo": os.environ.get("GITHUB_REPOSITORY"), "workflow": "garmin-sync.yml", "ref": os.environ.get("GITHUB_REF_NAME") or "main"}), "utf-8")
     log(f"Seite gebaut: {len(data_only['series'])} Kennlinien, {len(acts)} Aktivitäten, {n} Detailverläufe.")
     save_state(pw)
 

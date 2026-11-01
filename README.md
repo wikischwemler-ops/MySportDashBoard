@@ -52,6 +52,7 @@ Die Adresse steht nach dem Lauf unter **Settings → Pages**. Passwort eingeben,
 ## Wann wird synchronisiert?
 - **Alle 2 Stunden**, deutsche Zeit etwa 5:07 bis 23:07 Uhr (Sommerzeit 6:07 bis 0:07 Uhr), außerdem bei jedem Push nach `main`. GitHub startet geplante Läufe manchmal einige Minuten später.
 - **Sofort:** Actions → Garmin Sync → Run workflow. Mit „Alles neu laden“ wird der Zwischenspeicher ignoriert.
+- **Aus dem Dashboard:** Knopf „Sync starten“ oben rechts (nur auf GitHub Pages). Beim ersten Mal fragt er nach einem GitHub-Token: [fine-grained Token anlegen](https://github.com/settings/personal-access-tokens/new), Repository access „Only select repositories“ → dieses Repository, Permissions → Repository → **Actions: Read and write**, sonst nichts. Der Token bleibt nur im Browser, verschlüsselt mit dem Dashboard-Passwort, und muss je Gerät einmal eingegeben werden; ⚙ neben dem Knopf ersetzt oder entfernt ihn. Daneben steht der Status des letzten Laufs (✓ / läuft / ✗, Klick öffnet den Lauf). Ist der Lauf fertig, lädt das Dashboard die neuen Daten selbst nach.
 
 ## Sicherheit
 - Daten auf Pages: AES-256-GCM, Schlüssel aus deinem Passwort per PBKDF2 (250.000 Runden). Entschlüsselt wird nur in deinem Browser.
