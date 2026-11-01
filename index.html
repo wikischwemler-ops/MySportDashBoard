@@ -11,7 +11,7 @@
   --bg:#f3f5f7; --panel:#ffffff; --ink:#18212b; --muted:#5f6b78; --line:#dde3e9; --soft:#eaeef2;
   --accent:#1f5fd1;
   --run:#e0562b; --bike:#1f6fd1; --swim:#0c9a8f; --other:#8a5cc7; --fit:#c98a0b; --health:#2f9a4a; --pred:#c43d6b; --all:#3d4f63;
-  --st1:#8a96a3; --st2:#3b82c4; --st3:#e08a1e; --st4:#c9a20b; --st5:#2f9a4a; --st6:#7b4fc9; --st7:#d23f31; --st8:#8f1d1d;
+  --st1:#8a96a3; --st2:#3b82c4; --st3:#e08a1e; --st4:#c9a20b; --st5:#2f9a4a; --st6:#7b4fc9; --st7:#d23f31; --st8:#b5359f;
   --good:#2f9a4a; --bad:#c9412c;
   --f-display:"Saira Semi Condensed","Arial Narrow",system-ui,sans-serif;
   --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
@@ -20,12 +20,12 @@
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
   --bg:#0f141a; --panel:#171e26; --ink:#e6ebf0; --muted:#94a1ae; --line:#2a333e; --soft:#1f2731;
   --accent:#6aa0ff; --run:#ff7a4d; --bike:#5b9bff; --swim:#2fc7b9; --other:#b48cf0; --fit:#e8b23a; --health:#5cc677; --pred:#ef6f99; --all:#c3cfdb;
-  --st1:#9aa6b2; --st2:#5b9bff; --st3:#f0a443; --st4:#e2c23a; --st5:#5cc677; --st6:#a98af0; --st7:#ff6b55; --st8:#e0524a;
+  --st1:#9aa6b2; --st2:#5b9bff; --st3:#f0a443; --st4:#e2c23a; --st5:#5cc677; --st6:#a98af0; --st7:#ff6b55; --st8:#e05fd0;
   --good:#5cc677; --bad:#ff6b55; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#0f141a; --panel:#171e26; --ink:#e6ebf0; --muted:#94a1ae; --line:#2a333e; --soft:#1f2731;
   --accent:#6aa0ff; --run:#ff7a4d; --bike:#5b9bff; --swim:#2fc7b9; --other:#b48cf0; --fit:#e8b23a; --health:#5cc677; --pred:#ef6f99; --all:#c3cfdb;
-  --st1:#9aa6b2; --st2:#5b9bff; --st3:#f0a443; --st4:#e2c23a; --st5:#5cc677; --st6:#a98af0; --st7:#ff6b55; --st8:#e0524a;
+  --st1:#9aa6b2; --st2:#5b9bff; --st3:#f0a443; --st4:#e2c23a; --st5:#5cc677; --st6:#a98af0; --st7:#ff6b55; --st8:#e05fd0;
   --good:#5cc677; --bad:#ff6b55; color-scheme:dark}
 *{box-sizing:border-box}
 [hidden]{display:none!important}
@@ -93,7 +93,15 @@ tr.grp td{border-top:2px solid var(--line)}
 .ts-gw{display:flex;justify-content:center}.ts-g{width:120px;height:66px}.ts-gv{font:600 17px var(--f-mono);fill:var(--ink)}.ts-gl{font:500 9px var(--f-mono);fill:var(--muted)}
 .ts-sp{display:block;width:100%;height:26px;margin-top:4px}
 .ts-band{display:flex;height:16px;border-radius:4px;overflow:hidden;gap:1px}.ts-band i{flex:1;background:var(--c,var(--soft))}
-.ts-leg{display:flex;flex-wrap:wrap;gap:4px 14px;margin:7px 0 14px;font-size:12px;color:var(--muted)}.ts-leg i{display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--c);margin-right:5px;vertical-align:-1px}
+.ts-adv{border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:0;padding:10px 14px;margin:12px 0}
+.ts-adv.ziel{border-left-color:var(--good)}.ts-adv.warn{border-left-color:var(--fit)}.ts-adv.bad{border-left-color:var(--bad)}
+.ts-adv ul{margin:4px 0 0;padding-left:18px;font-size:13px;line-height:1.5}.ts-adv li{margin:3px 0}
+.ts-legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px 18px;margin-bottom:16px}
+.ts-lg h4{margin:0 0 6px;font:600 11px var(--f-mono);text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.ts-lg.ziel h4{color:var(--good)}.ts-lg.warn h4{color:var(--fit)}.ts-lg.bad h4{color:var(--bad)}
+.ts-li{display:flex;gap:8px;padding:5px 6px;border-radius:6px;font-size:12.5px;line-height:1.35}.ts-li i{flex-shrink:0;width:12px;height:12px;border-radius:3px;background:var(--c);margin-top:3px}
+.ts-li b{color:var(--c)}.ts-li em{font-style:normal;color:var(--muted);margin-left:6px;font-size:11.5px}.ts-li small{display:block;color:var(--muted);font-size:11.5px}
+.ts-li.cur{background:var(--soft);outline:1px solid var(--c)}
 .ts-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px 28px}
 @media (max-width:860px){.ts-grid{grid-template-columns:1fr}}
 .ts-h{margin:0 0 8px;font-size:13.5px;font-weight:600}.ts-h span{font-weight:400;color:var(--muted);font-size:12px;margin-left:6px}
@@ -659,6 +667,38 @@ function renderHrZones(view){
 const TSLV={DETRAINING:1,RECOVERY:2,UNPRODUCTIVE:3,MAINTAINING:4,PRODUCTIVE:5,PEAKING:6,OVERREACHING:7,STRAINED:8};
 const ACWR_DE={LOW:"niedrig",OPTIMAL:"optimal",HIGH:"hoch",VERY_HIGH:"sehr hoch"};
 let TSW=28;   // Fenster in Tagen
+// Alle Garmin-Status in Garmins Reihenfolge: [Schlüssel, Bedeutung, Bereich] — "ziel" = dort willst du sein
+const TSINFO=[
+  ["PEAKING","Ideale Wettkampfform: Last nach einem Aufbau gesenkt, Fitness hoch.","ziel"],
+  ["PRODUCTIVE","Last und Fitness steigen: das Training wirkt.","ziel"],
+  ["MAINTAINING","Last reicht, um die Fitness zu halten, aber nicht zum Steigern.","ziel"],
+  ["RECOVERY","Leichtere Last erlaubt Erholung. Kurz gewollt, auf Dauer zu wenig.","neutral"],
+  ["UNPRODUCTIVE","Last passt, aber die Fitness sinkt: meist fehlt Erholung (Schlaf, Stress, zu viel Intensität).","warn"],
+  ["DETRAINING","Last seit über einer Woche deutlich unter dem Gewohnten, Fitness geht zurück.","warn"],
+  ["OVERREACHING","Last sehr hoch und kontraproduktiv: der Körper braucht Erholung.","bad"],
+  ["STRAINED","Erholung gestört (HRV unausgeglichen), Leistung leidet. Belastung senken.","bad"]];
+// Empfehlung aus Status, ACWR und Load-Fokus; HF-Zonen wie in den Workouts
+function tsAdvice(st,acwrSt,lfFb,dv){
+  const S=DATA.series,lt=(S["fit.lthr"]?.d||[]).filter(p=>p[1]).pop()?.[1],hm=(S["run.hrmax"]?.d||[]).filter(p=>p[1]).pop()?.[1];
+  const Z2="Z2 130–148 bpm",Z4=lt?`Z4 ${lt-6}–${lt} bpm`:"Z4 knapp unter der Schwelle",Z5=hm?`Z5 ${Math.round(hm*.9)}–${Math.round(hm*.95)} bpm`:"Z5 90–95 % HFmax";
+  const A={
+    PEAKING:`Form halten: kurze, knackige Einheiten (z. B. 4×3 min ${Z4}) und viel Ruhe. Jetzt ist Wettkampfzeit, kein Umfang aufbauen.`,
+    PRODUCTIVE:`So weitermachen: Umfang in ${Z2} halten, 1 Schwelleneinheit (${Z4}) und 1 VO2max-Einheit (NTNU_4x4, ${Z5}) pro Woche.`,
+    MAINTAINING:`Für Produktiv die Last schrittweise erhöhen (max. +10 % pro Woche): einen Lauf in ${Z2} verlängern oder eine Schwelleneinheit (${Z4}) ergänzen.`,
+    RECOVERY:`Erholung nutzen, dann wieder aufbauen: 2–3 Tage locker in ${Z2}, danach normale Woche mit einer Qualitätseinheit.`,
+    UNPRODUCTIVE:`Fitness sinkt trotz passender Last${dv!=null&&dv<0?` (VO2max ${nf(dv,1)} im Zeitraum)`:""}: 3–5 Tage nur locker in ${Z2} oder Z1, Intensität streichen, auf Schlaf und Stress achten. Danach Qualität dosiert zurück (1 Einheit ${Z4} pro Woche).`,
+    DETRAINING:`Last zu niedrig: wieder regelmäßig trainieren, zuerst Umfang in ${Z2} (3–4 Läufe pro Woche), nach 1–2 Wochen eine Schwelleneinheit (${Z4}).`,
+    OVERREACHING:`Sofort entlasten: 3–5 Tage Ruhe oder sehr locker (Z1), danach Last 20–30 % unter dem bisherigen Niveau neu aufbauen.`,
+    STRAINED:`Belastung deutlich senken, bis die HRV wieder ausgeglichen ist: Ruhetage, nur Z1/${Z2} kurz, auf Schlaf, Stress und Krankheit achten.`};
+  const out=[];if(A[st])out.push(["Status",A[st]]);
+  if(acwrSt==="LOW")out.push(["Akute Last",`Unter dem Optimalbereich: Umfang oder Häufigkeit in ${Z2} erhöhen, damit die Last ins grüne Band kommt.`]);
+  else if(acwrSt==="HIGH"||acwrSt==="VERY_HIGH")out.push(["Akute Last",`Über dem Optimalbereich: die nächsten Tage locker (${Z2}) oder Ruhe, keine zwei harten Tage hintereinander.`]);
+  else if(acwrSt==="OPTIMAL")out.push(["Akute Last","Im grünen Band: Last so verteilen, dass sie dort bleibt (keine Sprünge über +10 % pro Woche)."]);
+  const LFA={AEROBIC_LOW_SHORTAGE:`Mehr lockere Grundlage: lange Läufe in ${Z2}.`,AEROBIC_HIGH_SHORTAGE:`Mehr Tempo-/Schwellenarbeit: 1–2 Einheiten ${Z4} pro Woche.`,ANAEROBIC_SHORTAGE:`Mehr kurze, harte Intervalle: NTNU_4x4 (${Z5}) oder Bergsprints.`,
+    AEROBIC_LOW_FOCUS:`Fokus liegt auf locker: eine Qualitätseinheit (${Z4}) ergänzen.`,AEROBIC_HIGH_FOCUS:`Fokus liegt auf Tempo: mehr lockeren Umfang in ${Z2}.`,ANAEROBIC_FOCUS:`Fokus liegt auf hart: Intervalle reduzieren, mehr ${Z2}.`,BALANCED:"Load-Fokus ausgewogen: Verteilung beibehalten."};
+  if(LFA[lfFb])out.push(["Load-Fokus",LFA[lfFb]]);
+  return out;
+}
 function acwrGauge(v,st){
   // Halbkreis 0–2,0: unter 0,8 niedrig, 0,8–1,3 optimal, 1,3–1,5 hoch, darüber sehr hoch
   const R=46,cx=60,cy=56,pt=a=>{const t=Math.PI*(1-Math.min(2,Math.max(0,a))/2);return[cx+R*Math.cos(t),cy-R*Math.sin(t)];};
@@ -693,7 +733,10 @@ function renderTrainStat(view){
       <div class="ts-k"><small>VO2max Laufen</small><b>${vo2!=null?nf(vo2,1):"–"}</b><span>${dv!=null?`${dv>=0?"+":"−"}${nf(Math.abs(dv),1)} im Zeitraum`:""}</span>${spark(vo,css("--fit"))}</div>
     </div>
     <div class="ts-band" aria-label="Status je Tag">${D.map(r=>`<i style="--c:var(--st${TSLV[r[1]]||0})" title="${dl(r[0])}: ${STATUS[TSLV[r[1]]]||"kein Status"}"></i>`).join("")}</div>
-    <div class="ts-leg">${[...new Set(D.map(r=>r[1]).filter(Boolean))].map(k=>`<span style="--c:var(--st${TSLV[k]})"><i></i>${STATUS[TSLV[k]]} · ${D.filter(r=>r[1]===k).length} T</span>`).join("")}</div>
+    <div class="ts-adv ${(TSINFO.find(x=>x[0]===cur[1])||[])[2]||""}"><h3 class="ts-h">Empfehlung <span>Ziel: im grünen Bereich bleiben (Höchstform, Produktiv, Leistung halten) und die akute Last im grünen Band</span></h3>
+      <ul>${tsAdvice(cur[1],cur[7],T.lf_fb,dv).map(([k,t])=>`<li><b>${k}:</b> ${t}</li>`).join("")}</ul></div>
+    <div class="ts-legend">${["ziel","neutral","warn","bad"].map(grp=>`<div class="ts-lg ${grp}"><h4>${{ziel:"Ziel",neutral:"Übergang",warn:"Achtung",bad:"Entlasten"}[grp]}</h4>
+      ${TSINFO.filter(x=>x[2]===grp).map(([k,t])=>{const n=D.filter(r=>r[1]===k).length;return`<div class="ts-li${k===cur[1]?" cur":""}" style="--c:var(--st${TSLV[k]})"><i></i><div><b>${STATUS[TSLV[k]]}</b>${n?`<em>${n} T</em>`:""}<small>${t}</small></div></div>`;}).join("")}</div>`).join("")}</div>
     <div class="ts-grid">
       <div><h3 class="ts-h">Akute Last und Last je Tag</h3><div class="chartbox sm"><canvas></canvas></div></div>
       ${lf?`<div><h3 class="ts-h">Load-Fokus <span>letzte 4 Wochen · gestrichelt = Optimalbereich</span></h3>${LFR.map(([l,c,i])=>`<div class="ts-lf" style="--c:var(${c})"><span>${l}</span><b>${lf[i]??"–"}</b><span class="ts-lt">${lf[i+1]!=null?`<u style="left:${lp(lf[i+1])}%;width:${lp(lf[i+2]-lf[i+1])}%"></u>`:""}<i style="width:${lp(lf[i]||0)}%"></i></span></div>`).join("")}
