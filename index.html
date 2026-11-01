@@ -290,6 +290,15 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 .tp-head{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between;margin-bottom:12px}
 .tp-head h2{font-family:var(--f-display);font-weight:600;font-size:21px;margin:0}
 .tp-head .sub{margin:0}
+.wodlg{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
+.wodlg[hidden]{display:none}
+.wodbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;width:min(760px,100%)}
+.wodbox .bighead{display:flex;gap:12px;align-items:center;justify-content:space-between;margin-bottom:12px}.wodbox h2{margin:0;font-size:18px}
+.tp-evs{display:flex;flex-direction:column;gap:4px;min-width:min(100%,360px)}
+.tp-evr{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 12px;align-items:baseline;font-size:12.5px;padding:3px 10px;border-radius:8px;color:var(--pred);background:color-mix(in srgb,var(--pred) 8%,transparent)}
+.tp-evr.next{background:color-mix(in srgb,var(--pred) 18%,transparent);font-weight:600}.tp-evr.prim .n::after{content:" ★"}
+.tp-evr .n{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tp-evr .d{color:var(--muted);font-weight:400;font-size:12px}.tp-evr .r{text-align:right;white-space:nowrap;font-family:var(--f-mono)}
+.tp-evr .r small{color:var(--muted);font-size:11px}
 .tp-ev{display:inline-flex;gap:6px;align-items:center;font-size:12.5px;padding:3px 9px;border-radius:999px;background:color-mix(in srgb,var(--pred) 14%,transparent);color:var(--pred);font-weight:500}
 .ck{flex-shrink:0;width:18px;height:18px;border-radius:50%;display:inline-grid;place-items:center;border:1.6px solid color-mix(in srgb,var(--c,var(--muted)) 70%,transparent);color:transparent}
 .ck svg{width:11px;height:11px}
@@ -1199,32 +1208,56 @@ function renderTraining(view){
   const byDay={};P.items.forEach(x=>(byDay[x.d]=byDay[x.d]||[]).push(x));
   const evDay={};(P.events||[]).forEach(e=>(evDay[e.d]=evDay[e.d]||[]).push(e));
   const dl=(k,o)=>new Date(k+"T12:00:00").toLocaleDateString("de-DE",o||{weekday:"long",day:"numeric",month:"long"});
-  const pi=x=>`<div class="pi ${x.st==="miss"?"miss":""}" style="--c:var(${SP[x.sp].v})">${ckHtml(x)}<div><span class="n">${x.name}</span>${pQty(x)?`<span class="q">${pQty(x)}</span>`:""}</div></div>`;
-  const evb=e=>`<div class="evb" title="${(e.loc||"").replace(/"/g,"&quot;")}">🏁 ${e.name}</div>`;
-  const nextEv=(P.events||[]).find(e=>e.d>=tk);
+  const pi=x=>`<div class="pi ${x.st==="miss"?"miss":""}" data-wid="${x.id}" title="Doppelklick: Workout anzeigen" style="--c:var(${SP[x.sp].v})">${ckHtml(x)}<div><span class="n">${x.name}</span>${pQty(x)?`<span class="q">${pQty(x)}</span>`:""}</div></div>`;
+  const evb=(e,i)=>`<div class="evb" data-ev="${i}" title="${(e.loc?e.loc+" · ":"").replace(/"/g,"&quot;")}Doppelklick: Details">🏁 ${e.name}</div>`;
+  // kommende Wettkämpfe bis ein Jahr voraus, nach Datum
+  const dTo=k=>Math.round((new Date(k+"T12:00:00")-new Date(tk+"T12:00:00"))/864e5),yr=isoD(new Date(Date.now()+365*864e5));
+  const upEv=(P.events||[]).filter(e=>e.d>=tk&&e.d<=yr).sort((a,b)=>a.d<b.d?-1:1);
+  const inTxt=n=>n===0?"heute":n===1?"morgen":`in ${n} Tagen`;
+  const evList=upEv.length?`<div class="tp-evs" aria-label="Kommende Wettkämpfe">${upEv.map((e,i)=>{const n=dTo(e.d);
+    return`<div class="tp-evr${i?"":" next"}${e.primary?" prim":""}" title="${[e.loc,e.km?nf(e.km,1)+" km":""].filter(Boolean).join(" · ").replace(/"/g,"&quot;")}"><span class="n">🏁 ${e.name}</span><span class="d">${dl(e.d,{weekday:"short",day:"numeric",month:"short",year:"numeric"})}</span><span class="r">${inTxt(n)}${n>=14?` <small>(${Math.round(n/7)} Wo)</small>`:""}</span></div>`;}).join("")}</div>`:"";
   const smooth=matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth";
   const chev=d=>`<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   view.append(h(`<section class="panel" id="tp-day"></section>`));
   view.append(h(`<section class="panel" id="tp-wk"></section>`));
   view.append(h(`<section class="panel" id="tp-mo"></section>`));
   const pick=k=>{TP.day=k;drawDay();drawWeek();drawMonth();};
-  function drawDay(){
-    const k=TP.day,L=byDay[k]||[],E=evDay[k]||[],box=document.getElementById("tp-day");
-    const days=nextEv?Math.round((new Date(nextEv.d+"T12:00:00")-new Date(tk+"T12:00:00"))/864e5):0;
-    const nxt=L.length?null:P.items.find(x=>x.d>k);
-    box.innerHTML=`<div class="tp-head"><div><h2>${k===tk?"Heute zu tun":dl(k)}</h2><div class="sub">${k===tk?dl(k):k<tk?"Vergangener Tag":"Geplant"}${k!==tk?` · <button class="btn" id="tp-today" style="padding:2px 8px">zu heute</button>`:""}</div></div>
-      ${nextEv?`<span class="tp-ev">🏁 ${nextEv.name} · ${days===0?"heute":days===1?"morgen":`in ${days} Tagen`}</span>`:""}</div>
-      ${E.map(e=>`<div class="tp-ev" style="margin-bottom:10px">🏁 Wettkampf: ${e.name}${e.km?` · ${nf(e.km,1)} km`:""}${e.loc?` · ${e.loc}`:""}</div>`).join("")}
-      ${L.length?`<div class="tp-today">${L.map(x=>`<article class="wo ${x.st}" style="--c:var(${SP[x.sp].v})">
+  const woHtml=x=>`<article class="wo ${x.st}" style="--c:var(${SP[x.sp].v})">
           <h3>${ckHtml(x)}${x.name}</h3>
           <div class="meta"><span style="color:var(${SP[x.sp].v})">${SP[x.sp].l}</span>${pQty(x)?`<span><b>${pQty(x)}</b></span>`:""}<span>${x.st==="done"?"erledigt":x.st==="miss"?"nicht erledigt":"offen"}</span></div>
           ${x.desc?`<p class="desc">${x.desc}</p>`:""}
           ${x.steps.length?stepsHtml(x.steps):""}
-          ${x.act&&(DATA.activities||[]).some(a=>a.id===x.act)?`<button class="btn go" data-act="${x.act}">Ausgeführte Aktivität ansehen →</button>`:""}</article>`).join("")}</div>`
+          ${x.act&&(DATA.activities||[]).some(a=>a.id===x.act)?`<button class="btn go" data-act="${x.act}">Ausgeführte Aktivität ansehen →</button>`:""}</article>`;
+  const evHtml=e=>{const n=dTo(e.d);return`<div class="wo" style="--c:var(--pred)"><h3>🏁 ${e.name}</h3><div class="meta"><span>${dl(e.d,{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</span>${e.km?`<span><b>${nf(e.km,1)} km</b></span>`:""}${e.loc?`<span>${e.loc}</span>`:""}<span>${n<0?`vor ${-n} Tagen`:inTxt(n)}</span></div></div>`;};
+  const goAct=b=>{const a=DATA.activities.find(a=>a.id===+b.dataset.act);ACT.sel=a.id;ACT.month=a.d.slice(0,7);ACT.zoom=null;TAB="acts";save();render();
+    setTimeout(()=>document.getElementById("detp")?.scrollIntoView({behavior:smooth,block:"start"}),50);};
+  // Doppelklick: Workout, Wettkampf oder ganzen Tag im Fenster zeigen
+  function openWo(k,wid,ev){
+    const L=byDay[k]||[],E=evDay[k]||[],sel=wid?L.filter(x=>String(x.id)===wid):ev!=null?[]:L,es=ev!=null?[E[+ev]].filter(Boolean):wid?[]:E;
+    if(!sel.length&&!es.length)return;
+    let d=document.getElementById("wodlg");
+    if(!d){d=h(`<div id="wodlg" class="wodlg" hidden role="dialog" aria-modal="true" aria-labelledby="wodt"><div class="wodbox"><div class="bighead"><h2 id="wodt"></h2><button class="btn" id="wodclose">Schließen ✕</button></div><div id="wodbody" class="tp-today"></div></div></div>`);document.body.append(d);
+      const close=()=>{d.hidden=true;document.body.style.overflow="";};d.querySelector("#wodclose").onclick=close;d.onclick=e=>{if(e.target===d)close();};
+      document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!d.hidden)close();});}
+    d.querySelector("#wodt").textContent=dl(k,{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    const body=d.querySelector("#wodbody");body.innerHTML=es.map(evHtml).join("")+sel.map(woHtml).join("");
+    body.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{d.hidden=true;document.body.style.overflow="";goAct(b);});
+    d.hidden=false;document.body.style.overflow="hidden";d.querySelector("#wodclose").focus();
+  }
+  // einfacher Klick wählt den Tag, verzögert, damit ein Doppelklick ihn nicht auslöst
+  let clk=0;const onPick=(box,sel,fn)=>{box.querySelectorAll(sel).forEach(b=>b.onclick=()=>{clearTimeout(clk);clk=setTimeout(()=>fn(b),230);});
+    box.ondblclick=e=>{const day=e.target.closest("[data-k]");if(!day)return;clearTimeout(clk);const p=e.target.closest("[data-wid]"),v=e.target.closest("[data-ev]");
+      openWo(day.dataset.k,p?p.dataset.wid:null,v?v.dataset.ev:null);};};
+  function drawDay(){
+    const k=TP.day,L=byDay[k]||[],E=evDay[k]||[],box=document.getElementById("tp-day");
+    const nxt=L.length?null:P.items.find(x=>x.d>k);
+    box.innerHTML=`<div class="tp-head"><div><h2>${k===tk?"Heute zu tun":dl(k)}</h2><div class="sub">${k===tk?dl(k):k<tk?"Vergangener Tag":"Geplant"}${k!==tk?` · <button class="btn" id="tp-today" style="padding:2px 8px">zu heute</button>`:""}</div></div>
+      ${evList}</div>
+      ${E.map(e=>`<div class="tp-ev" style="margin-bottom:10px">🏁 Wettkampf: ${e.name}${e.km?` · ${nf(e.km,1)} km`:""}${e.loc?` · ${e.loc}`:""}</div>`).join("")}
+      ${L.length?`<div class="tp-today">${L.map(woHtml).join("")}</div>`
         :`<div class="rest">Ruhetag – kein Workout geplant.${nxt?` Nächstes: <b>${nxt.name}</b> am ${dl(nxt.d,{weekday:"short",day:"numeric",month:"short"})}.`:""}</div>`}`;
     const t=box.querySelector("#tp-today");if(t)t.onclick=()=>{TP.week=monOf(tk);TP.month=tk.slice(0,7);pick(tk);};
-    box.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>{const a=DATA.activities.find(a=>a.id===+b.dataset.act);ACT.sel=a.id;ACT.month=a.d.slice(0,7);ACT.zoom=null;TAB="acts";save();render();
-      setTimeout(()=>document.getElementById("detp")?.scrollIntoView({behavior:smooth,block:"start"}),50);});
+    box.querySelectorAll("[data-act]").forEach(b=>b.onclick=()=>goAct(b));
   }
   function drawWeek(){
     const box=document.getElementById("tp-wk"),m0=TP.week,ks=[...Array(7)].map((_,i)=>addD(m0,i));
@@ -1241,7 +1274,7 @@ function renderTraining(view){
         ${["run","bike","swim","other"].filter(s=>W.some(x=>x.sp===s)).map(s=>`<span style="color:var(${SP[s].v})">${SP[s].l}: <b style="color:inherit">${W.filter(x=>x.sp===s).length}×</b>${km(s)?` · ${nf(km(s),s==="swim"?1:0)} km`:""}${hrs(s)?` · ${nf(hrs(s),1)} h`:""}</span>`).join("")}</div>`;
     const go=n=>{TP.week=addD(TP.week,n);drawWeek();};
     box.querySelector("#wp").onclick=()=>go(-7);box.querySelector("#wn").onclick=()=>go(7);box.querySelector("#wt").onclick=()=>{TP.week=monOf(tk);TP.month=tk.slice(0,7);pick(tk);};
-    box.querySelectorAll(".tp-day").forEach(b=>b.onclick=()=>{pick(b.dataset.k);document.getElementById("tp-day").scrollIntoView({behavior:smooth,block:"start"});});
+    onPick(box,".tp-day",b=>{pick(b.dataset.k);document.getElementById("tp-day").scrollIntoView({behavior:smooth,block:"start"});});
   }
   function drawMonth(){
     const box=document.getElementById("tp-mo"),[y,m]=TP.month.split("-").map(Number);
@@ -1262,7 +1295,7 @@ function renderTraining(view){
       <div class="tp-leg"><span><span class="ck done">${CKSVG}</span>erledigt</span><span><span class="ck">${CKSVG}</span>geplant</span><span><span class="ck miss">${CKSVG}</span>nicht erledigt</span><span>🏁 Wettkampf</span><span>Nur der Plan; ausgeführte Aktivitäten stehen unter „Aktivitäten“.</span></div>`;
     const st=n=>{const t=new Date(y,m-1+n,1,12);TP.month=isoD(t).slice(0,7);drawMonth();};
     box.querySelector("#mp").onclick=()=>st(-1);box.querySelector("#mn").onclick=()=>st(1);box.querySelector("#mt").onclick=()=>{TP.month=tk.slice(0,7);drawMonth();};
-    box.querySelectorAll(".pcal>button").forEach(b=>b.onclick=()=>{TP.week=monOf(b.dataset.k);pick(b.dataset.k);document.getElementById("tp-day").scrollIntoView({behavior:smooth,block:"start"});});
+    onPick(box,".pcal>button",b=>{TP.week=monOf(b.dataset.k);pick(b.dataset.k);document.getElementById("tp-day").scrollIntoView({behavior:smooth,block:"start"});});
   }
   drawDay();drawWeek();drawMonth();
 }

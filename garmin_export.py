@@ -755,6 +755,7 @@ def plan_step(s, swim):
 def nf_de(v, d):
     return f"{v:,.{d}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+EVENT_DAYS = 365   # Wettkampftermine bis ein Jahr voraus
 def fetch_plan(g, today):
     """Geplante Workouts (mit Schritten, erledigt = mit Aktivität verknüpft) und Wettkampftermine aus dem Garmin-Kalender."""
     a, b = (today.replace(day=1) - dt.timedelta(days=62)).replace(day=1), today + dt.timedelta(days=150)
@@ -772,8 +773,9 @@ def fetch_plan(g, today):
                       "dur": w.get("estimatedDurationInSecs") or sec or None, "m": w.get("estimatedDistanceInMeters") or m or None,
                       "aid": s.get("associatedActivityId"), "race": bool(s.get("race")), "steps": steps})
     events, seen = [], set()
+    eb = today + dt.timedelta(days=EVENT_DAYS)              # Wettkämpfe weiter voraus als die Workouts
     y, mo = a.year, a.month
-    while (y, mo) <= (b.year, b.month):
+    while (y, mo) <= (eb.year, eb.month):
         for c in (call(g.get_scheduled_workouts, y, mo) or {}).get("calendarItems") or []:
             if c.get("itemType") == "event" and (c.get("date"), c.get("title")) not in seen:
                 seen.add((c.get("date"), c.get("title")))
