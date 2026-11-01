@@ -1,5 +1,5 @@
 {
-  "description": "New branches must use two levels: prefix/name. prefix = e.g. feat, fix or your Windows user ID; name = functional name. Flat names like fix-garmin-tokens are rejected. Checked by the hook .githooks/pre-push. Generate the GitHub ruleset with: py .githooks/branch_check.py --ruleset > .github/rulesets/branch-names.json",
+  "description": "New branches must use two levels: <prefix>/<name>: prefix = e.g. feat, fix or your userID; name = functional name. Flat names without a slash are rejected. Checked by the hook .githooks/pre-push. Generate the GitHub ruleset with: py .githooks/branch_check.py --ruleset > .github/rulesets/branch-names.json",
   "allowed": ["main"],
   "prefix_pattern": "^[a-z0-9][a-z0-9._-]*$",
   "name_pattern": "^[a-z0-9][a-z0-9._-]*$",
@@ -11,6 +11,6 @@
     "refactor": "restructuring without new features",
     "test": "tests",
     "ci": "workflow, build",
-    "<windows-user>": "personal work, e.g. hp840g6"
+    "<userID>": "personal work under your user ID"
   }
 }

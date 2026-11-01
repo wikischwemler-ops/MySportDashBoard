@@ -1,16 +1,14 @@
 """Checks branch names against .githooks/branch-rules.json: new branches must use two levels, prefix/name.
 
-prefix = feat, fix, Windows user ID, ...; name = functional name.
+prefix = feat, fix, userID, ...; name = functional name.
 As pre-push hook: reads Git's lines from stdin, exit code 1 for a disallowed new branch.
   --name NAME   check a single name
   --ruleset     print the GitHub ruleset (JSON) derived from the rules
 """
-import json, os, re, sys
+import json, re, sys
 from pathlib import Path
 
 RULES = json.loads((Path(__file__).parent / "branch-rules.json").read_text("utf-8"))
-TYPES = [p for p in RULES["prefix_examples"] if not p.startswith("<")]
-ME = re.sub(r"[^a-z0-9._-]+", "-", (os.environ.get("USERNAME") or os.environ.get("USER") or "").lower())
 ZERO = "0" * 40
 
 
@@ -21,30 +19,18 @@ def ok(name):
     return bool(sep) and re.match(RULES["prefix_pattern"], p) is not None and re.match(RULES["name_pattern"], rest) is not None
 
 
-def suggest(name):
-    low = re.sub(r"[^a-z0-9._/-]+", "-", name.lower()).strip("-/")
-    if "/" in low:                                   # too deep: join the rest
-        p, _, rest = low.partition("/")
-        return f"{p}/{rest.replace('/', '-')}"
-    for t in TYPES:                                  # fix-garmin-tokens -> fix/garmin-tokens
-        for sep in ("-", "_", "."):
-            if low.startswith(t + sep) and len(low) > len(t) + 1:
-                return f"{t}/{low[len(t) + 1:]}"
-    return f"{ME or 'feat'}/{low}"
-
-
 def report(name):
-    tip = suggest(name)
     ex = "\n".join(f"    {p:<18}{d}" for p, d in RULES["prefix_examples"].items())
     print(f"""
 Push rejected: branch name "{name}" is not allowed.
-  New branches must use two levels: prefix/name  (prefix = type or user ID, name = functional name)
+  New branches must use two levels: <prefix>/<name>  (prefix = type or userID, name = functional name)
   Prefix examples:
 {ex}
   Allowed characters: lowercase letters, digits, dot, hyphen, underscore; exactly one "/".
   Rules: .githooks/branch-rules.json
-  Suggestion:  git branch -m "{name}" "{tip}"
-               git push -u origin "{tip}"
+  Rename and push again:
+    git branch -m <old-name> <prefix>/<name>
+    git push -u origin <prefix>/<name>
 """, file=sys.stderr)
 
 
