@@ -82,6 +82,8 @@ tr.grp td{border-top:2px solid var(--line)}
 .ro-c{border:1px solid var(--line);border-radius:9px;padding:10px 12px;min-width:0}
 .ro-c h3{font-size:14.5px;font-weight:600;margin:0}.ro-c .ph{margin-bottom:2px;align-items:flex-start}
 .ro-c .right{display:flex;gap:10px;align-items:center}
+.la-k{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 20px;margin-bottom:12px}
+.la-k small{display:block;font-size:11.5px;color:var(--muted)}.la-k b{font:600 21px var(--f-mono);margin-right:3px}.la-k span{display:block;font-size:12px;color:var(--muted)}
 .ts .ph .right{flex-wrap:wrap;gap:8px}
 .ts-top{display:grid;grid-template-columns:minmax(200px,1.4fr) repeat(3,minmax(120px,1fr));gap:12px 20px;align-items:center;margin-bottom:14px}
 @media (max-width:760px){.ts-top{grid-template-columns:1fr 1fr}.ts-st{grid-column:1/-1}}
@@ -552,6 +554,7 @@ function renderOverview(view){
     g2.append(b);const o2=baseOpts();o2.scales.y=yAxis(s);if(late)o2.scales.x.min=x0;
     charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:[lineDs(s,p2,col(s.group),{pointRadius:p2.length<30?2.5:0}),{...lineDs(s,movAvg(p2,8),css("--ink"),{fill:false,borderWidth:1.4,pointRadius:0,lbl:"Ø 8 Wochen"}),_noTrend:true}]},options:o2}));
   }
+  renderLactate(view);
 }
 
 
@@ -766,6 +769,58 @@ function bandPlug(band,lineAt){return{id:"coachBand",beforeDatasetsDraw(c){if(!b
   if(lineAt!=null){const yy=y.getPixelForValue(lineAt);if(yy>a.top&&yy<a.bottom){x.strokeStyle=css("--good");x.lineWidth=2;x.setLineDash([8,5]);x.beginPath();x.moveTo(a.left,yy);x.lineTo(a.right,yy);x.stroke();
     x.fillStyle=css("--good");x.font="600 11px "+css("--f-mono");x.fillText("Ziel",a.right-30,yy-4);}}
   x.restore();}};}
+// ---- Laktatkurve (Modell) aus Garmins Schwelle und der Pace bei Referenzpuls ----
+// Anker: LT2 = Garmin-Laktatschwelle ≈ 4 mmol/l, LT1 bei 87 % der Schwellen-HF ≈ 2 mmol/l, Ruhewert 1 mmol/l.
+// Form La(v) = 1 + a·e^(b·v) durch beide Anker. Puls ↔ Tempo linear zwischen (Referenzpuls, Pace dort) und (Schwellen-HF, Schwellenpace).
+const LA_LT1=.87;
+function laSnap(t){
+  // Schwelle: letzter Garmin-Wert im Fenster (wie auf der Uhr); Pace bei Referenzpuls: Median der Monate (glättet)
+  const S=DATA.series,ref=(DATA.meta||{}).ref_hr,win=(id,days,lastOnly)=>{const s=S[id];if(!s)return null;
+    const v=s.d.filter(p=>p[1]!=null&&toTs(p[0])<=t&&toTs(p[0])>t-days*864e5).map(p=>p[1]);if(!v.length)return null;
+    if(lastOnly)return v[v.length-1];v.sort((a,b)=>a-b);return v[v.length>>1];};
+  const ltp=win("fit.ltpace",70,true),lthr=win("fit.lthr",70,true),pref=win("run.pref",100);
+  if(!ltp||!lthr||!pref||!ref||lthr<=ref+3)return null;
+  const v2=3600/ltp,vr=3600/pref,hr2v=hr=>vr+(hr-ref)/(lthr-ref)*(v2-vr),v2hr=v=>ref+(v-vr)/(v2-vr)*(lthr-ref);
+  const hr1=Math.round(LA_LT1*lthr),v1=Math.min(hr2v(hr1),v2-.4);
+  const b=Math.log(3)/(v2-v1),a=Math.exp(-b*v1);
+  return{t,v1,v2,hr1,lthr,v2hr,la:v=>1+a*Math.exp(b*v),vAt:L=>Math.log((L-1)/a)/b};
+}
+function renderLactate(view){
+  const S=DATA.series;if(!S["fit.ltpace"]||!S["fit.lthr"]||!S["run.pref"])return;
+  const last=Math.min(END,Math.max(...["fit.ltpace","run.pref"].map(id=>toTs(S[id].d[S[id].d.length-1][0])))),M=30.44*864e5;
+  const snaps=[[0,"jetzt","--ink"],[6,"vor 6 Monaten","--bike"],[12,"vor 12 Monaten","--muted"]].map(([m,l,c])=>{const s=laSnap(last-m*M);return s?{...s,l,c:css(c)}:null;}).filter(Boolean);
+  if(!snaps.length)return;
+  const N=snaps[0],pc=v=>{const s=3600/v;return`${Math.floor(s/60)}:${String(Math.round(s%60)).padStart(2,"0")}`;};
+  const vmin=Math.floor(Math.min(...snaps.map(s=>s.v1))-2.5),vmax=Math.ceil(Math.max(...snaps.map(s=>s.vAt(9)||s.v2+2)));
+  const sec=h(`<section class="panel"><div class="ph"><h2>Laktatkurve (Modell)</h2><span class="note">aus Garmin-Laktatschwelle und Pace bei ${(DATA.meta||{}).ref_hr} bpm · keine Messung</span></div>
+    <div class="la-k">
+      <div><small>Aerobe Schwelle LT1 · ~2 mmol/l</small><b>${pc(N.v1)}</b> min/km<span>${nf(N.v1,1)} km/h · ca. ${N.hr1} bpm</span></div>
+      <div><small>Anaerobe Schwelle LT2 · ~4 mmol/l</small><b>${pc(N.v2)}</b> min/km<span>${nf(N.v2,1)} km/h · ${N.lthr} bpm (Garmin)</span></div>
+      ${snaps.slice(1).map(s=>{const d=N.v2-s.v2;return`<div><small>LT2 ${s.l}</small><b>${pc(s.v2)}</b> min/km<span style="color:var(${Math.abs(d)<.1?"--muted":d>0?"--good":"--bad"})">${Math.abs(d)<.1?"unverändert":`${d>0?"heute schneller":"heute langsamer"} um ${nf(Math.abs(d),1)} km/h`}</span></div>`;}).join("")}
+    </div><div class="chartbox"><canvas></canvas></div>
+    <p class="ro-note">Modellkurve La = 1 + a·e<sup>b·v</sup> durch zwei Anker: LT2 = Garmins Laktatschwelle (Tempo und Puls) ≈ 4 mmol/l, LT1 bei ${Math.round(LA_LT1*100)} % der Schwellen-HF ≈ 2 mmol/l, Ruhewert 1 mmol/l. Das Tempo zu LT1 kommt aus deiner Puls-Tempo-Beziehung der Dauerläufe. Phase 1 = Grundlage (Laktat kaum erhöht), Phase 2 = linearer Anstieg, Phase 3 = exponentieller Anstieg über LT2. Die Form ist eine Annahme; aussagekräftig ist die Verschiebung der Kurve über die Zeit (nach rechts = schneller bei gleichem Laktat). Nur ein Laktat-Stufentest misst die echte Kurve.</p></section>`);
+  view.append(sec);
+  const step=.1,X=[];for(let v=vmin;v<=vmax+1e-9;v+=step)X.push(+v.toFixed(2));
+  const o=baseOpts();
+  o.scales={x:{type:"linear",min:vmin,max:vmax,grid:{color:css("--line")},border:{display:false},title:{display:true,text:"Tempo [km/h] · min/km"},ticks:{stepSize:1,callback:v=>`${v} · ${pc(v)}`}},
+    xh:{type:"linear",position:"top",min:N.v2hr(vmin),max:N.v2hr(vmax),grid:{display:false},border:{display:false},title:{display:true,text:"Puls (jetzt) [bpm]"},ticks:{maxTicksLimit:8,callback:v=>Math.round(v)}},
+    y:{min:0,max:10,grid:{color:css("--line")},border:{display:false},title:{display:true,text:"Laktat [mmol/l]"},ticks:{stepSize:2}}};
+  o.plugins.legend={display:true,position:"bottom",labels:{boxWidth:14,boxHeight:3}};
+  o.plugins.tooltip.callbacks={title:it=>{const v=it[0].parsed.x;return`${nf(v,1)} km/h · ${pc(v)} min/km · ca. ${Math.round(N.v2hr(v))} bpm`;},label:it=>` ${it.dataset.label}: ${nf(it.parsed.y,1)} mmol/l`};
+  const g=css("--good"),f=css("--fit"),r=css("--bad");
+  // Phasen hinterlegen, LT1/LT2 der aktuellen Kurve markieren
+  const phases={id:"laPh",beforeDatasetsDraw(c){const{ctx,chartArea:A,scales:{x,y}}=c;ctx.save();
+    [[vmin,N.v1,g,"Phase 1"],[N.v1,N.v2,f,"Phase 2"],[N.v2,vmax,r,"Phase 3"]].forEach(([a,b,col,l])=>{const xa=x.getPixelForValue(a),xb=x.getPixelForValue(b);ctx.fillStyle=col+"14";ctx.fillRect(xa,A.top,xb-xa,A.bottom-A.top);
+      ctx.fillStyle=col;ctx.font="500 11px "+css("--f-mono");ctx.textAlign="center";ctx.fillText(l,(xa+xb)/2,A.top+14);});
+    [[N.v1,2,"LT1"],[N.v2,4,"LT2"]].forEach(([v,L,l])=>{const px=x.getPixelForValue(v),py=y.getPixelForValue(L);ctx.strokeStyle=css("--ink");ctx.setLineDash([4,4]);ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(px,A.bottom);ctx.lineTo(px,py);ctx.lineTo(A.left,py);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle=css("--ink");ctx.textAlign="left";ctx.fillText(`${l} ${L} mmol/l`,px+5,py-6);});
+    ctx.restore();}};
+  const ds=snaps.map((s,i)=>({label:`${s.l} (LT2 ${pc(s.v2)})`,data:X.map(v=>({x:v,y:Math.min(12,s.la(v))})),borderColor:s.c,borderWidth:i?1.6:2.8,borderDash:i?[6,4]:[],pointRadius:0,tension:0,fill:false,xAxisID:"x"}));
+  ds.push({label:"_xh",data:[],xAxisID:"xh"});
+  o.plugins.legend.labels.filter=it=>!it.text.startsWith("_");
+  charts.push(new Chart(sec.querySelector("canvas"),{type:"line",data:{datasets:ds},options:o,plugins:[phases]}));
+}
 function renderCoach(view){
   const S=DATA.series,ok=id=>S[id]&&S[id].d.some(p=>p[1]!=null);
   const hm=(S["run.hrmax"]?.d||[]).filter(p=>p[1]).pop()?.[1],lt=(S["fit.lthr"]?.d||[]).filter(p=>p[1]).pop()?.[1],ref=(DATA.meta||{}).ref_hr;
@@ -825,6 +880,7 @@ function renderCoach(view){
     charts.push(trendChart(b.querySelector("canvas"),{type:"line",data:{datasets:ds},options:o2,plugins:[bandPlug(o.band,o.goal)]}));
     ROX[o.id]=ROX[o.id]||{arrow:arr(o),band:o.band,zb:`Ziel ${tgt(o)} · aktuell ${fmt(s,o.e.cur)}`,plugin:bandPlug(o.band,o.goal)};}));
   sec.append(h(`<p class="ro-note">Nur aerobe Dauerläufe (ab 5 km, unter 15 Hm/km, 50–85 % HF-Reserve). „Dein bestes Viertel“ = oberes Quartil deiner eigenen Monatswerte bis zum Bestwert, also ein Niveau, das du schon erreicht hast. Vertikales Verhältnis = Auf und Ab je Schrittlänge; Garmin-Skala: unter 6,1 % exzellent, 6,1–7,4 gut, 7,5–8,6 mittel, 8,7–10,1 schwach. Tempobereinigt = Abweichung vom Erwartungswert bei deinem Tempo. HF-Zonen aus deinen Workouts und deiner bereinigten HFmax.</p>`));
+  renderLactate(view);
 }
 
 // ---- Load-Fokus (3 Bänder mit Zielbereich) + Trainingsstatus ----
