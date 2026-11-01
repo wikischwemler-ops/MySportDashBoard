@@ -140,8 +140,8 @@ def fetch_activities(g, start, end, full):
     for k, v in acts.items():          # ältere Cache-Einträge ohne ID ergänzen
         if k.isdigit(): v.setdefault("id", int(k))
     # vollständige Jahre aus dem Cache, aktuelle 30 Tage immer neu
-    if acts and any("name" not in v or "vr" not in v for v in acts.values()):
-        log("Ältere Aktivitätsdaten ohne Namen oder Laufdynamik gefunden – lade alle Aktivitäten einmal neu.")
+    if acts and any("name" not in v or "vr" not in v or "load" not in v for v in acts.values()):
+        log("Ältere Aktivitätsdaten ohne Namen, Laufdynamik oder Trainingslast gefunden – lade alle Aktivitäten einmal neu.")
         acts = {}
     have_until = max((v["d"] for v in acts.values()), default=None)
     have_from = min((v["d"] for v in acts.values()), default=None)
@@ -182,6 +182,7 @@ def slim_activity(a):
         "vo2": a.get("vO2MaxValue"), "event": dig(a, "eventType", "typeKey"),
         "vo": a.get("avgVerticalOscillation"), "vr": a.get("avgVerticalRatio"),       # Laufdynamik (cm, %)
         "stride": a.get("avgStrideLength"), "gap": a.get("avgGradeAdjustedSpeed"),   # Schrittlänge (cm), Tempo höhenbereinigt (m/s)
+        "load": a.get("activityTrainingLoad"), "tel": a.get("trainingEffectLabel"),  # Trainingslast und Trainingseffekt-Art
     }
 
 def fetch_daily(g, start, end, full):
@@ -253,6 +254,51 @@ def fetch_weekly(g, start, end, full):
         })
     c.save()
     return c.d
+
+STATUS_DAYS = 84   # Trainingsstatus tageweise für die letzten 12 Wochen
+def fetch_status_daily(g, end, full):
+    """Trainingsstatus je Tag (letzte STATUS_DAYS): Status, akute/chronische Last mit Optimalbereich, ACWR, VO2max, Load-Fokus."""
+    c = Cache("status_daily")
+    if full: c.d = {}
+    limit = (dt.date.today() - dt.timedelta(days=FINAL_AFTER_DAYS)).isoformat()
+    first = end - dt.timedelta(days=STATUS_DAYS - 1)
+    todo = [d for d in days(first, end, 1) if not (c.has(d.isoformat()) and d.isoformat() < limit)]
+    log(f"Trainingsstatus: {len(todo)} Tage …")
+    for d in todo:
+        ts = call(g.get_training_status, d.isoformat()) or {}
+        st, lb = {}, {}
+        for dev in (dig(ts, "mostRecentTrainingStatus", "latestTrainingStatusData") or {}).values():
+            if isinstance(dev, dict) and dev.get("trainingStatusFeedbackPhrase") and (dev.get("primaryTrainingDevice") or not st): st = dev
+        for dev in (dig(ts, "mostRecentTrainingLoadBalance", "metricsTrainingLoadBalanceDTOMap") or {}).values():
+            if isinstance(dev, dict) and dev.get("monthlyLoadAerobicLow") is not None and (dev.get("primaryTrainingDevice") or not lb): lb = dev
+        al = st.get("acuteTrainingLoadDTO") or {}
+        r0 = lambda v: None if v is None else round(v)
+        c.put(d.isoformat(), {
+            "st": status_key(st.get("trainingStatusFeedbackPhrase")), "since": st.get("sinceDate"),
+            "atl": r0(al.get("dailyTrainingLoadAcute")), "ctl": r0(al.get("dailyTrainingLoadChronic")),
+            "lo": r0(al.get("minTrainingLoadChronic")), "hi": r0(al.get("maxTrainingLoadChronic")),
+            "acwr": al.get("dailyAcuteChronicWorkloadRatio"), "acwr_st": al.get("acwrStatus"),
+            "vo2": dig(ts, "mostRecentVO2Max", "generic", "vo2MaxPreciseValue"),
+            "lf": [r0(lb.get(k)) for k in ("monthlyLoadAerobicLow", "monthlyLoadAerobicLowTargetMin", "monthlyLoadAerobicLowTargetMax",
+                                          "monthlyLoadAerobicHigh", "monthlyLoadAerobicHighTargetMin", "monthlyLoadAerobicHighTargetMax",
+                                          "monthlyLoadAnaerobic", "monthlyLoadAnaerobicTargetMin", "monthlyLoadAnaerobicTargetMax")] if lb else None,
+            "lf_fb": lb.get("trainingBalanceFeedbackPhrase"),
+        })
+    c.save()
+    keep = {(first + dt.timedelta(days=i)).isoformat() for i in range(STATUS_DAYS)}
+    return {k: v for k, v in c.d.items() if k in keep}
+
+
+def build_trainstat(sd, acts):
+    """Kompakte Tagesreihe für die Trainingsstatus-Karte: [datum, status, akut, opt_min, opt_max, chronisch, acwr, acwr_status, vo2max, last_der_aktivitäten]."""
+    load = {}
+    for a in acts:
+        if a.get("load"): load[a["d"]] = load.get(a["d"], 0) + a["load"]
+    rows = [[k, v.get("st"), v.get("atl"), v.get("lo"), v.get("hi"), v.get("ctl"), v.get("acwr"), v.get("acwr_st"), v.get("vo2"), round(load.get(k, 0))]
+            for k, v in sorted(sd.items())]
+    last = next((v for _, v in sorted(sd.items(), reverse=True) if v.get("lf")), {})
+    since = next((v.get("since") for _, v in sorted(sd.items(), reverse=True) if v.get("st")), None)
+    return {"days": rows, "since": since, "lf": last.get("lf"), "lf_fb": last.get("lf_fb")}
 
 RANGE_KEYS = ("weight", "fat", "bmi", "fatkg", "lean", "muscle", "bone", "water", "endur", "hill", "pred", "lthr", "ltpace", "ltpwr")
 def fetch_ranges(g, start, end):
@@ -771,6 +817,8 @@ def run_export(tokens=None, years=4.0, out=None, full=False, no_health=False, in
                         "rest": z.get("restingHeartRateUsed"), "lthr": z.get("lactateThresholdHeartRateUsed"),
                         "z": [z.get(f"zone{i}Floor") for i in range(1, 6)]}
                        for z in zs if isinstance(z, dict) and z.get("zone1Floor")]
+    if not a.no_health:
+        data["trainstat"] = build_trainstat(fetch_status_daily(g, end, a.full), acts)
     data["plan"] = fetch_plan(g, end)
     log(f"Trainingsplan: {len(data['plan']['items'])} geplante Workouts, {len(data['plan']['events'])} Wettkämpfe")
     act_list = data.pop("activities")          # Einzelaktivitäten getrennt von den Kennlinien
