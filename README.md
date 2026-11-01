@@ -65,6 +65,7 @@ Neue Branches nur zweistufig als `xxx/yyy`: `xxx` = Präfix (z. B. `feat`, `fix`
 - **Lokal beim Push:** einmal je Klon `tools\git_hooks_einrichten.bat` ausführen (oder `git config core.hooksPath .githooks`). Danach bricht `git push` bei falschem Namen ab und zeigt den passenden Umbenennen-Befehl.
 - **Auf GitHub (verbindlich, auch ohne Hook):** Settings → Rules → Rulesets → New ruleset → **Import a ruleset** → `.github/rulesets/branch-names.json`. Nach Änderungen an den Regeln neu erzeugen: `py .githooks/branch_check.py --ruleset > .github/rulesets/branch-names.json`, dann das Ruleset auf GitHub ersetzen.
 - Einzelnen Namen prüfen: `py .githooks/branch_check.py --name hp840g6/garmin-tokens`
+- **Für andere Repositories:** `docs/branch-naming-setup.md` enthält alle Dateien und Schritte (englisch), z. B. als Auftrag für GitHub Copilot.
 
 ## Dateien
 | Datei | Zweck |
