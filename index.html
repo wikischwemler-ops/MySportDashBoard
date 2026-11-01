@@ -373,7 +373,7 @@ let DATA=null, RANGE=0, TAB="overview", TREND=false, charts=[];   // RANGE in Mo
 const sel={}; // gewählte Kennlinie je Reiter
 const optMA={}, optTrend={};
 const exp={a:"run.km",b:"fit.vo2run",c:"",norm:false};
-try{const s=JSON.parse(localStorage.getItem("gd-ui")||"{}");if(s.range!=null)RANGE=s.range;if(s.tab)TAB=s.tab;TREND=!!s.trend;}catch(e){}
+try{const s=JSON.parse(localStorage.getItem("gd-ui")||"{}");if(s.range!=null)RANGE=s.range;TREND=!!s.trend;}catch(e){}
 const save=()=>{try{localStorage.setItem("gd-ui",JSON.stringify({range:RANGE,tab:TAB,trend:TREND}))}catch(e){}};
 
 // ---------- Formatierung ----------
