@@ -290,6 +290,11 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 .tp-head{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;justify-content:space-between;margin-bottom:12px}
 .tp-head h2{font-family:var(--f-display);font-weight:600;font-size:21px;margin:0}
 .tp-head .sub{margin:0}
+.ghstat{font-size:12px;font-family:var(--f-mono);white-space:nowrap;align-self:center}.ghstat a{color:var(--muted);text-decoration:none}.ghstat a:hover{text-decoration:underline}
+.ghstat.ok a{color:var(--good)}.ghstat.bad a{color:var(--bad)}.ghstat.run a{color:var(--fit)}
+.ghbox{display:flex;flex-direction:column;gap:8px;font-size:13.5px;line-height:1.5}.ghbox p{margin:0}.ghbox ol{margin:0;padding-left:20px}.ghbox code{font-size:12px}
+.ghbox input{font:inherit;font-family:var(--f-mono);padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink)}
+.gherr{color:var(--bad);font-size:13px;min-height:1em}.ghnote{color:var(--muted);font-size:12.5px}.ghbtns{display:flex;gap:8px;flex-wrap:wrap}
 .wodlg{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
 .wodlg[hidden]{display:none}
 .wodbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;width:min(760px,100%)}
@@ -389,6 +394,7 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
       </div>
       <button class="btn" id="trendbtn" aria-pressed="false" title="Gestrichelte lineare Trendlinie zu jeder Kurve in allen Auswertungen">Trendlinien</button>
       <button class="btn" id="upd" hidden>Jetzt aktualisieren</button>
+      <span id="ghstat" class="ghstat" hidden></span><button class="btn" id="ghsync" hidden title="Garmin-Sync auf GitHub starten">Sync starten</button><button class="btn" id="ghset" hidden title="GitHub-Token für den Sync" aria-label="GitHub-Token">⚙</button>
       <button class="btn" id="logout" hidden>Sperren</button>
       <label class="btn" for="file">JSON laden</label>
       <input type="file" id="file" accept=".json,application/json" hidden>
@@ -1762,7 +1768,7 @@ let ENC=null,KEY=null;
 const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
 const toB64=buf=>btoa(String.fromCharCode(...new Uint8Array(buf)));
 async function deriveKey(pw){const base=await crypto.subtle.importKey("raw",new TextEncoder().encode(pw),"PBKDF2",false,["deriveKey"]);
-  return crypto.subtle.deriveKey({name:"PBKDF2",salt:b64(ENC.salt),iterations:ENC.iterations,hash:"SHA-256"},base,{name:"AES-GCM",length:256},true,["decrypt"]);}
+  return crypto.subtle.deriveKey({name:"PBKDF2",salt:b64(ENC.salt),iterations:ENC.iterations,hash:"SHA-256"},base,{name:"AES-GCM",length:256},true,["encrypt","decrypt"]);}
 async function decRaw(buf,key=KEY){buf=new Uint8Array(buf);return crypto.subtle.decrypt({name:"AES-GCM",iv:buf.slice(0,12)},key,buf.slice(12));}
 async function decJson(buf){const pt=await decRaw(buf);const st=new Blob([pt]).stream().pipeThrough(new DecompressionStream("gzip"));return JSON.parse(await new Response(st).text());}
 async function fetchEnc(path){const r=await fetch(path+"?"+(ENC.generated_at||""),{cache:"no-cache"});if(!r.ok)throw new Error(r.status===404?"404":"HTTP "+r.status);return decJson(await r.arrayBuffer());}
@@ -1772,10 +1778,11 @@ async function unlockWith(key,remember){KEY=key;
   document.getElementById("lock").hidden=true;document.getElementById("logout").hidden=false;
   try{load(await fetchEnc("data.enc"));}catch(e){return showErr("Die Daten konnten nicht geladen werden: "+e.message);}
   try{setActs(await fetchEnc("activities.enc"));DATA._actsFile=true;}catch(e){}
-  const sub=document.getElementById("sub");if(sub&&ENC.generated_at)sub.insertAdjacentHTML("beforeend",`<span>·</span><span>Sync ${ENC.generated_at.replace("T"," ")}</span>`);}
+  const sub=document.getElementById("sub");if(sub&&ENC.generated_at)sub.insertAdjacentHTML("beforeend",`<span>·</span><span id="syncts">Sync ${ENC.generated_at.replace("T"," ")}</span>`);
+  ghInit();}
 async function startEncrypted(){
   try{const st=JSON.parse(localStorage.getItem("gd-key")||"null");
-    if(st&&st.salt===ENC.salt){const k=await crypto.subtle.importKey("raw",b64(st.k),{name:"AES-GCM"},true,["decrypt"]);if(await keyOk(k))return unlockWith(k,false);}}catch(e){}
+    if(st&&st.salt===ENC.salt){const k=await crypto.subtle.importKey("raw",b64(st.k),{name:"AES-GCM"},true,["encrypt","decrypt"]);if(await keyOk(k))return unlockWith(k,false);}}catch(e){}
   document.getElementById("sub").textContent="Gesperrt";document.getElementById("lock").hidden=false;document.getElementById("lockpw").focus();}
 document.getElementById("lockform").addEventListener("submit",async e=>{e.preventDefault();const err=document.getElementById("lockerr"),btn=document.getElementById("lockbtn");
   err.textContent="";btn.disabled=true;btn.textContent="Entschlüssele …";
@@ -1783,6 +1790,73 @@ document.getElementById("lockform").addEventListener("submit",async e=>{e.preven
     if(!(await keyOk(k))){err.textContent="Das Passwort stimmt nicht. Es ist das Secret DASHBOARD_PASSWORD aus GitHub.";return;}
     document.getElementById("lockpw").value="";await unlockWith(k,document.getElementById("lockremember").checked);}
   catch(x){err.textContent="Entschlüsseln fehlgeschlagen: "+x.message;}finally{btn.disabled=false;btn.textContent="Entsperren";}});
+// ---- Sync-Knopf (GitHub Pages): Workflow über die GitHub-API starten ----
+// Token (fine-grained, nur dieses Repository, Actions: Read and write) bleibt nur in diesem Browser, verschlüsselt mit dem Dashboard-Schlüssel.
+const GH={run:null,busy:false,t:0};
+const ghRepo=()=>ENC&&ENC.repo||(location.hostname.endsWith(".github.io")?location.hostname.split(".")[0]+"/"+location.pathname.split("/")[1]:null);
+const ghWf=()=>ENC&&ENC.workflow||"garmin-sync.yml";
+async function ghToken(){try{const v=localStorage.getItem("gd-gh");return v&&KEY?new TextDecoder().decode(await decRaw(b64(v))):null;}catch(e){return null;}}
+async function ghSave(tok){const iv=crypto.getRandomValues(new Uint8Array(12)),ct=new Uint8Array(await crypto.subtle.encrypt({name:"AES-GCM",iv},KEY,new TextEncoder().encode(tok)));
+  const b=new Uint8Array(12+ct.length);b.set(iv);b.set(ct,12);localStorage.setItem("gd-gh",toB64(b));}
+async function ghApi(path,opt={}){const tok=await ghToken();
+  return fetch("https://api.github.com/repos/"+ghRepo()+path,{...opt,cache:"no-store",headers:{Accept:"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28",...(tok?{Authorization:"Bearer "+tok}:{}),...(opt.headers||{})}});}
+const ghFmt=sec=>`${Math.floor(sec/60)}:${String(Math.floor(sec%60)).padStart(2,"0")}`;
+function ghShow(){const st=document.getElementById("ghstat"),btn=document.getElementById("ghsync"),r=GH.run;if(!st)return;
+  const running=GH.busy||!!(r&&r.status!=="completed");btn.disabled=running;btn.textContent=running?"Sync läuft …":"Sync starten";
+  if(!r){st.hidden=!GH.busy;st.textContent=GH.busy?"wird gestartet …":"";return;}
+  const t=new Date(r.run_started_at||r.created_at),age=(Date.now()-t)/1e3,hm=t.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});
+  const when=t.toDateString()===new Date().toDateString()?hm:t.toLocaleDateString("de-DE",{day:"numeric",month:"numeric"})+" "+hm;
+  st.hidden=false;st.className="ghstat "+(running?"run":r.conclusion==="success"?"ok":r.conclusion?"bad":"");
+  st.innerHTML=`<a href="${r.html_url}" target="_blank" rel="noopener" title="Lauf auf GitHub öffnen">${running?`läuft ${ghFmt(age)}`:r.conclusion==="success"?`✓ letzter Sync ${when}`:`✗ Sync ${r.conclusion==="cancelled"?"abgebrochen":"fehlgeschlagen"} ${when}`}</a>`;}
+async function ghPoll(){clearTimeout(GH.t);
+  if(document.hidden){GH.t=setTimeout(ghPoll,30000);return;}
+  try{const r=await ghApi(`/actions/workflows/${ghWf()}/runs?per_page=1`);
+    if(r.ok){const run=(await r.json()).workflow_runs?.[0]||null,was=GH.run&&GH.run.status!=="completed"?GH.run.id:null;
+      GH.run=run;if(run&&run.status!=="completed")GH.busy=false;
+      if(was&&run&&run.id===was&&run.status==="completed"&&run.conclusion==="success")ghReload();}}catch(e){}
+  ghShow();const running=GH.busy||!!(GH.run&&GH.run.status!=="completed"),tok=!!localStorage.getItem("gd-gh");
+  GH.t=setTimeout(ghPoll,running?8000:tok?60000:180000);}   // ohne Token erlaubt GitHub höchstens 60 Abfragen pro Stunde
+async function ghReload(){   // neue Daten nachladen, ohne neu zu entsperren; das Pages-Deployment kann etwas nachlaufen
+  const old=ENC.generated_at;
+  for(let i=0;i<18;i++){try{const j=await (await fetch("site.json",{cache:"no-store"})).json();
+      if(j.generated_at&&j.generated_at!==old){ENC={...ENC,...j};load(await fetchEnc("data.enc"));
+        try{setActs(await fetchEnc("activities.enc"));DATA._actsFile=true;}catch(e){}
+        const s=document.getElementById("syncts");if(s)s.textContent="Sync "+j.generated_at.replace("T"," ");return;}}catch(e){}
+    await new Promise(r=>setTimeout(r,10000));}}
+function ghDialog(){let d=document.getElementById("ghdlg");
+  if(!d){d=document.createElement("div");d.id="ghdlg";d.className="wodlg";d.hidden=true;d.setAttribute("role","dialog");d.setAttribute("aria-modal","true");document.body.append(d);
+    document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!d.hidden){d.hidden=true;document.body.style.overflow="";}});}
+  const has=!!localStorage.getItem("gd-gh"),repo=ghRepo();
+  d.innerHTML=`<form class="wodbox ghbox" novalidate><div class="bighead"><h2>GitHub-Token für den Sync</h2><button type="button" class="btn" data-x>Schließen ✕</button></div>
+    <p>Damit der Knopf „Sync starten“ den Garmin-Sync auf GitHub anstoßen kann, braucht er einmalig einen eigenen Token mit sehr wenigen Rechten:</p>
+    <ol><li><a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">Neuen fine-grained Token anlegen</a> (GitHub → Settings → Developer settings).</li>
+      <li><b>Repository access:</b> Only select repositories → <code>${repo||"dein Repository"}</code></li>
+      <li><b>Permissions → Repository → Actions:</b> Read and write. Sonst nichts.</li>
+      <li>Ablaufdatum wählen (z. B. 1 Jahr), Token erzeugen und hier einfügen.</li></ol>
+    <label for="ghtok">Token</label><input id="ghtok" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+    <p class="gherr" id="gherr" role="alert"></p>
+    <p class="ghnote">Der Token bleibt nur in diesem Browser, verschlüsselt mit deinem Dashboard-Passwort, und landet nie im Repository. Auf jedem Gerät einmal eingeben.</p>
+    <div class="ghbtns"><button class="btn" type="submit">Speichern und Sync starten</button>${has?`<button class="btn" type="button" data-del>Token entfernen</button>`:""}</div></form>`;
+  const f=d.querySelector("form"),inp=d.querySelector("#ghtok"),err=d.querySelector("#gherr"),close=()=>{d.hidden=true;document.body.style.overflow="";};
+  d.querySelector("[data-x]").onclick=close;d.onclick=e=>{if(e.target===d)close();};inp.oninput=()=>{err.textContent="";};
+  const del=d.querySelector("[data-del]");if(del)del.onclick=()=>{localStorage.removeItem("gd-gh");close();ghPoll();};
+  f.onsubmit=async e=>{e.preventDefault();const v=inp.value.trim();
+    if(!v){err.textContent="Bitte den Token einfügen.";return;}
+    if(!/^(github_pat_|ghp_)\w{20,}$/.test(v)){err.textContent="Das sieht nicht wie ein GitHub-Token aus (beginnt mit github_pat_ oder ghp_).";return;}
+    try{await ghSave(v);}catch(x){err.textContent="Speichern fehlgeschlagen: "+x.message;return;}
+    inp.value="";close();ghStart();};
+  d.hidden=false;document.body.style.overflow="hidden";inp.focus();}
+async function ghStart(){const tok=await ghToken();if(!tok)return ghDialog();
+  GH.busy=true;ghShow();
+  try{const r=await ghApi(`/actions/workflows/${ghWf()}/dispatches`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ref:ENC.ref||"main"})});
+    if(r.status!==204){GH.busy=false;ghShow();
+      const msg={401:"Der Token ist ungültig oder abgelaufen.",403:"Dem Token fehlt die Berechtigung „Actions: Read and write“.",404:"Repository oder Workflow nicht gefunden – gilt der Token für dieses Repository?",422:"GitHub hat den Start abgelehnt (Workflow oder Branch passt nicht)."}[r.status]||"GitHub antwortet mit Fehler "+r.status+".";
+      showErr("Sync konnte nicht gestartet werden: "+msg+" Über ⚙ neben dem Knopf kannst du den Token ersetzen.");return;}
+    setTimeout(ghPoll,4000);}   // der neue Lauf erscheint nach ein paar Sekunden in der Liste
+  catch(x){GH.busy=false;ghShow();showErr("Sync konnte nicht gestartet werden: "+x.message);}}
+function ghInit(){if(!ENC||!ghRepo())return;const b=document.getElementById("ghsync"),g=document.getElementById("ghset");
+  b.hidden=false;g.hidden=false;b.onclick=ghStart;g.onclick=ghDialog;
+  document.addEventListener("visibilitychange",()=>{if(!document.hidden)ghPoll();});ghPoll();}
 document.getElementById("logout").onclick=()=>{try{localStorage.removeItem("gd-key");}catch(e){}location.reload();};
 fetch("site.json",{cache:"no-cache"}).then(r=>r.ok?r.json():null).then(j=>{if(j&&j.encrypted&&window.crypto&&crypto.subtle){ENC=j;startEncrypted();}else getData();}).catch(()=>getData());
 // Lokales Programm: Aktualisieren-Knopf + Status
