@@ -295,6 +295,29 @@ h3.sh{font-family:var(--f-display);font-weight:600;font-size:16px;margin:0 0 8px
 .ghbox{display:flex;flex-direction:column;gap:8px;font-size:13.5px;line-height:1.5}.ghbox p{margin:0}.ghbox ol{margin:0;padding-left:20px}.ghbox code{font-size:12px}
 .ghbox input{font:inherit;font-family:var(--f-mono);padding:8px 10px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink)}
 .gherr{color:var(--bad);font-size:13px;min-height:1em}.ghnote{color:var(--muted);font-size:12.5px}.ghbtns{display:flex;gap:8px;flex-wrap:wrap}
+.sl .ph .right{display:flex;align-items:center;gap:8px}
+.sl-top{display:grid;grid-template-columns:auto minmax(0,1fr);gap:18px 26px;align-items:center;margin-bottom:14px}
+@media (max-width:640px){.sl-top{grid-template-columns:1fr}}
+.sl-score{width:104px;height:104px;border-radius:50%;border:7px solid var(--muted);display:flex;flex-direction:column;align-items:center;justify-content:center}
+.sl-score b{font:600 32px/1 var(--f-mono)}.sl-score span{font-size:11.5px;color:var(--muted);margin-top:3px}
+.sl-score.q-EXCELLENT{border-color:var(--good)}.sl-score.q-GOOD{border-color:#5fb0f5}.sl-score.q-FAIR{border-color:var(--fit)}.sl-score.q-POOR{border-color:var(--bad)}
+.sl-dur{font-size:15px}.sl-dur b{font:600 22px var(--f-mono);margin-right:4px}.sl-dur .good{color:var(--good)}.sl-dur .bad{color:var(--bad)}
+.sl-time{font-size:12.5px;color:var(--muted);margin:2px 0 10px}
+.sl-phases{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px 18px}
+.sl-pl{display:flex;align-items:baseline;gap:8px;font-size:12.5px}.sl-pl span{flex:1}.sl-pl i{display:inline-block;width:10px;height:10px;border-radius:3px;background:var(--c);margin-right:6px}
+.sl-pl b{font:600 14px var(--f-mono)}.sl-pl em{font-style:normal;color:var(--muted);font-family:var(--f-mono);font-size:12px;min-width:3em;text-align:right}
+.sl-pt{position:relative;height:8px;background:var(--soft);border-radius:4px;margin-top:4px}.sl-pt i{position:absolute;left:0;top:0;bottom:0;background:var(--c);border-radius:4px}
+.sl-pt u{position:absolute;top:-3px;bottom:-3px;border:1.5px dashed var(--muted);border-radius:5px}
+.sl-ks{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px 18px;margin:4px 0 12px}
+.sl-k small{display:block;font-size:11.5px;color:var(--muted)}.sl-k b{font:600 20px var(--f-mono)}.sl-k .u{font-size:12px;color:var(--muted);margin-left:3px}.sl-k span:not(.u){display:block;font-size:11.5px;color:var(--muted)}
+.sl-k .good,.sl-k b.good{color:var(--good)}.sl-k .warn{color:var(--fit)}.sl-k .bad,.sl-k b.bad{color:var(--bad)}
+.sl-note{font-size:13px;margin:0 0 12px;padding:6px 12px;border-left:4px solid var(--muted)}.sl-note.good{border-left-color:var(--good)}.sl-note.warn{border-left-color:var(--fit)}
+.sl-hyp{display:grid;grid-template-columns:78px minmax(0,1fr);gap:8px;margin-bottom:14px}
+.sl-hl{display:grid;grid-template-rows:repeat(4,1fr);font-size:11.5px;font-weight:600;height:150px;align-items:center}
+.sl-svg{width:100%;height:170px;display:block}.sl-gl{stroke:var(--line);stroke-width:1}.sl-tx{font:11px var(--f-mono);fill:var(--muted)}
+.sl-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px 22px}
+.sl-grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:14px 22px}
+tr.sl-few td{color:var(--muted)}
 .wodlg{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:6vh 16px;overflow:auto}
 .wodlg[hidden]{display:none}
 .wodbox{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;width:min(760px,100%)}
@@ -835,6 +858,148 @@ function bandPlug(band,lineAt){return{id:"coachBand",beforeDatasetsDraw(c){if(!b
   if(lineAt!=null){const yy=y.getPixelForValue(lineAt);if(yy>a.top&&yy<a.bottom){x.strokeStyle=css("--good");x.lineWidth=2;x.setLineDash([8,5]);x.beginPath();x.moveTo(a.left,yy);x.lineTo(a.right,yy);x.stroke();
     x.fillStyle=css("--good");x.font="600 11px "+css("--f-mono");x.fillText("Ziel",a.right-30,yy-4);}}
   x.restore();}};}
+// ---- Reiter Schlaf: letzte Nacht (Phasen, Verläufe), Trends, Regelmäßigkeit, Schlafschuld, Schlaf und Training ----
+const SLC={deep:"#2a55c9",light:"#5fb0f5",rem:"#a95fe3",awake:"#ef7dbe"},SLN={deep:"Tiefschlaf",light:"Leichtschlaf",rem:"REM",awake:"Wach"};
+const SLQ={EXCELLENT:"Ausgezeichnet",GOOD:"Gut",FAIR:"Ausreichend",POOR:"Schlecht"};
+const SL={i:null,win:30};
+const hm=m=>m==null?"–":`${Math.floor(m/60)}:${String(Math.round(m%60)).padStart(2,"0")}`;
+const clk=(start,min)=>{const[a,b]=(start||"0:0").split(":").map(Number),t=((a*60+b+Math.round(min))%1440+1440)%1440;return`${String(Math.floor(t/60)).padStart(2,"0")}:${String(t%60).padStart(2,"0")}`;};
+const dShort=k=>{const p=k.split("-");return +p[2]+"."+(+p[1])+".";};
+const avg=a=>{const v=a.filter(x=>x!=null);return v.length?v.reduce((s,x)=>s+x,0)/v.length:null;};
+const sdev=a=>{const v=a.filter(x=>x!=null),m=avg(v);return v.length>1?Math.sqrt(v.reduce((s,x)=>s+(x-m)**2,0)/(v.length-1)):null;};
+// Uhrzeit → Minuten ab 18 Uhr (Abend und Morgen auf einer Achse)
+const hourOff=start=>{const[a,b]=(start||"0:0").split(":").map(Number);return(60-b)%60;};   // Minuten bis zur nächsten vollen Stunde
+const m18=t=>{if(!t)return null;const[a,b]=t.split(":").map(Number);return((a*60+b)-1080+1440)%1440;};
+function sleepTimeChart(canvas,N,D,ds,yAx){
+  const o=baseOpts();o.scales={x:{type:"linear",min:0,max:N.dur+N.awake,grid:{color:css("--line")},border:{display:false},ticks:{callback:v=>clk(N.start,v)},afterBuildTicks:ax=>{const o=hourOff(N.start),t=[];for(let v=o;v<=N.dur+N.awake;v+=60)t.push({value:v});ax.ticks=t;}},...yAx};
+  o.plugins.legend={display:true,position:"bottom",labels:{boxWidth:14,boxHeight:3}};o.plugins.tooltip.mode="nearest";o.plugins.tooltip.intersect=false;
+  o.plugins.tooltip.callbacks={title:it=>clk(N.start,it[0].parsed.x),label:it=>` ${it.dataset.label}: ${nf(it.parsed.y,it.dataset._dec||0)} ${it.dataset._u||""}`};
+  charts.push(new Chart(canvas,{type:"line",data:{datasets:ds},options:o}));
+}
+function renderSleep(view){
+  const S=DATA.sleep,NN=(S&&S.nights)||[];
+  if(!NN.length){view.append(h(`<div class="msg">Noch keine Schlafdaten. Der nächste Export holt die Nächte von Garmin (Schlafmonitor oder Uhr nachts tragen).</div>`));return;}
+  const DK=NN.filter(n=>S.detail&&S.detail[n.d]).map(n=>n.d);if(SL.i==null||SL.i>=DK.length)SL.i=DK.length-1;
+  // A: eine Nacht im Detail
+  const secA=h(`<section class="panel sl"></section>`);view.append(secA);
+  const drawNight=()=>{
+    charts.filter(c=>c._sl).forEach(c=>{c.destroy();charts.splice(charts.indexOf(c),1);});
+    const k=DK[SL.i],N=NN.find(n=>n.d===k)||NN[NN.length-1],D=(S.detail||{})[N.d]||{},tot=N.dur+(N.awake||0);
+    const ph=["deep","light","rem","awake"].map(p=>({p,m:N[p]||0,pc:tot?(N[p]||0)/tot*100:0,opt:(N.opt||{})[p]}));
+    const hrs=(D.hr||[]).map(p=>p[1]),win=5,sm=(D.hr||[]).map((p,i,a)=>{const w=a.slice(Math.max(0,i-win),i+win+1).map(q=>q[1]).sort((x,y)=>x-y);return[p[0],w[w.length>>1]];});
+    const sm2=sm.filter(p=>p[0]>=15),lo=sm2.length?sm2.reduce((m,p)=>p[1]<m[1]?p:m):null,loPct=lo?lo[0]/tot*100:null;
+    const tile=(l,v,u,sub)=>`<div class="sl-k"><small>${l}</small><b>${v}</b>${u?`<span class="u">${u}</span>`:""}${sub?`<span>${sub}</span>`:""}</div>`;
+    const dl=new Date(N.d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+    secA.innerHTML=`<div class="ph"><h2>Nacht auf ${dl}</h2><span class="right">
+        <button class="iconbtn" id="slp" aria-label="Vorige Nacht" ${SL.i>0?"":"disabled"}>‹</button><span class="note">${DK.length?`${SL.i+1} von ${DK.length} Nächten mit Verlauf`:""}</span><button class="iconbtn" id="sln" aria-label="Nächste Nacht" ${SL.i<DK.length-1?"":"disabled"}>›</button></span></div>
+      <div class="sl-top">
+        <div class="sl-score q-${N.q||""}"><b>${N.score??"–"}</b><span>${SLQ[N.q]||"Schlafwert"}</span></div>
+        <div class="sl-main"><div class="sl-dur"><b>${hm(N.dur)} h</b> Schlaf${N.need?` · Bedarf ${hm(N.need)} h <span class="${N.dur>=N.need?"good":"bad"}">(${N.dur>=N.need?"+":"−"}${hm(Math.abs(N.need-N.dur))})</span>`:""}</div>
+          <div class="sl-time">${N.start||"–"} – ${N.end||"–"} · ${N.awakes??0}× wach · ${N.restless??"–"} unruhige Momente</div>
+          <div class="sl-phases">${ph.map(o=>`<div class="sl-ph" style="--c:${SLC[o.p]}"><div class="sl-pl"><span><i></i>${SLN[o.p]}</span><b>${hm(o.m)}</b><em>${nf(o.pc,0)} %</em></div>
+            <div class="sl-pt">${o.opt&&o.opt[0]!=null?`<u style="left:${o.opt[0]}%;width:${o.opt[1]-o.opt[0]}%" title="Garmin-Optimalbereich ${o.opt[0]}–${o.opt[1]} %"></u>`:""}<i style="width:${Math.min(100,o.pc)}%"></i></div></div>`).join("")}</div></div>
+      </div>
+      <div class="sl-ks">${tile("Ø Puls im Schlaf",N.hr??"–","bpm",N.rhr?`Ruhepuls ${N.rhr} bpm`:"")}${tile("HRV (Nacht-Ø)",N.hrv??"–","ms",N.hrv_st&&N.hrv_st!=="NONE"?`Status: ${N.hrv_st}`:"Status ab ca. 3 Wochen Messung")}
+        ${tile("Atmung",N.resp!=null?nf(N.resp,0):"–","/min","")}${tile("SpO₂",N.spo2!=null?nf(N.spo2,0):"–","%",N.spo2min!=null?`tiefster Wert ${N.spo2min} %`:"")}
+        ${tile("Body Battery",N.bb!=null?(N.bb>=0?"+":"")+N.bb:"–","","aufgeladen in der Nacht")}${tile("Stress im Schlaf",N.stress!=null?nf(N.stress,0):"–","","Ø, unter 15 = sehr ruhig")}
+        ${tile("Hauttemperatur",N.skin!=null?(N.skin>=0?"+":"")+nf(N.skin,1):"–","°C","Abweichung vom Normalwert")}
+        ${tile("Tiefster Puls",lo?Math.round(lo[1]):"–","bpm",lo?`nach ${hm(lo[0])} h (${nf(loPct,0)} % der Nacht)`:"")}</div>
+      ${lo?`<p class="sl-note ${loPct<=55?"good":"warn"}">${loPct<=55?"Der Puls erreicht sein Minimum in der ersten Nachthälfte: Der Körper kommt früh in die Erholung.":"Der Puls sinkt erst spät auf sein Minimum. Häufige Ursachen: harte oder späte Einheit, spätes Essen, Alkohol, Stress."}</p>`:""}
+      ${(D.levels||[]).length?`<h3 class="ts-h">Schlafphasen</h3><div class="sl-hyp">${hypno(N,D)}</div>`:`<p class="ro-note">Für diese Nacht gibt es keinen Phasenverlauf.</p>`}
+      <div class="sl-grid">
+        <div><h3 class="ts-h">Puls und HRV</h3><div class="chartbox sm"><canvas id="slc1"></canvas></div></div>
+        <div><h3 class="ts-h">Atmung und SpO₂</h3><div class="chartbox sm"><canvas id="slc2"></canvas></div></div>
+        <div><h3 class="ts-h">Body Battery und Stress</h3><div class="chartbox sm"><canvas id="slc3"></canvas></div></div>
+      </div>`;
+    secA.querySelector("#slp").onclick=()=>{SL.i--;drawNight();};secA.querySelector("#sln").onclick=()=>{SL.i++;drawNight();};
+    const P=a=>(a||[]).map(p=>({x:p[0],y:p[1]})),ax=(pos,t,ex)=>({position:pos,grid:{color:pos==="left"?css("--line"):"transparent"},border:{display:false},title:{display:true,text:t},...ex});
+    const ln=(l,d,c,ax2,u,ex)=>({label:l,data:P(d),borderColor:c,backgroundColor:c,borderWidth:1.8,pointRadius:0,tension:.3,yAxisID:ax2,_u:u,...ex});
+    const n0=charts.length;
+    sleepTimeChart(secA.querySelector("#slc1"),N,D,[ln("Puls",D.hr,css("--run"),"y","bpm"),ln("HRV",D.hrv,css("--good"),"y2","ms",{pointRadius:1.5})],{y:ax("left","bpm"),y2:ax("right","ms")});
+    sleepTimeChart(secA.querySelector("#slc2"),N,D,[ln("Atmung",D.resp,css("--swim"),"y","/min"),ln("SpO₂",D.spo2,css("--other"),"y2","%")],{y:ax("left","/min"),y2:ax("right","%",{suggestedMin:90,max:100})});
+    sleepTimeChart(secA.querySelector("#slc3"),N,D,[ln("Body Battery",D.bb,css("--bike"),"y",""),ln("Stress",D.stress,css("--fit"),"y","",{borderWidth:1.2})],{y:ax("left","",{min:0,max:100})});
+    charts.slice(n0).forEach(c=>c._sl=true);
+  };
+  drawNight();
+  // B: Verlauf über die Nächte
+  const secB=h(`<section class="panel"></section>`);view.append(secB);
+  const drawTrend=()=>{
+    charts.filter(c=>c._slt).forEach(c=>{c.destroy();charts.splice(charts.indexOf(c),1);});
+    const from=addD(NN[NN.length-1].d,-SL.win+1),L=NN.filter(n=>n.d>=from),lab=L.map(n=>dShort(n.d));
+    const band=vals=>{const v=vals.filter(x=>x!=null);if(v.length<7)return null;const m=avg(v),s=sdev(v);return[m-s,m+s];};
+    secB.innerHTML=`<div class="ph"><h2>Verlauf</h2><span class="right"><span class="note">${L.length} Nächte mit Daten · grünes Band = dein Normalbereich (Mittel ± 1 Standardabweichung, ab 7 Nächten)</span>
+      <div class="seg" role="group" aria-label="Zeitraum">${[[14,"14 T"],[30,"30 T"],[90,"90 T"],[120,"120 T"]].map(([n,l])=>`<button data-slw="${n}" aria-pressed="${SL.win===n}">${l}</button>`).join("")}</div></span></div>
+      <div class="sl-grid2"><div><h3 class="ts-h">Schlafphasen und Bedarf</h3><div class="chartbox sm"><canvas></canvas></div></div>
+        <div><h3 class="ts-h">Schlafwert</h3><div class="chartbox sm"><canvas></canvas></div></div>
+        <div><h3 class="ts-h">HRV und Ruhepuls</h3><div class="chartbox sm"><canvas></canvas></div></div>
+        <div><h3 class="ts-h">Atmung und SpO₂</h3><div class="chartbox sm"><canvas></canvas></div></div></div>`;
+    secB.querySelectorAll("[data-slw]").forEach(b=>b.onclick=()=>{SL.win=+b.dataset.slw;drawTrend();});
+    const cv=secB.querySelectorAll("canvas"),g=css("--good"),n0=charts.length;
+    const opt=(y,y2)=>{const o=baseOpts();o.scales={x:{type:"category",grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:10}},y:{grid:{color:css("--line")},border:{display:false},...y},...(y2?{y2:{position:"right",grid:{display:false},border:{display:false},...y2}}:{})};
+      o.plugins.legend={display:true,position:"bottom",labels:{boxWidth:14,boxHeight:3,filter:it=>!it.text.startsWith("_")}};o.plugins.tooltip.mode="index";o.plugins.tooltip.filter=it=>!it.dataset.label.startsWith("_");o.plugins.tooltip.callbacks={};return o;};
+    const bandDs=(vals,ax)=>{const b=band(vals);return b?[{type:"line",label:"_lo",data:L.map(()=>b[0]),borderColor:"transparent",pointRadius:0,fill:false,yAxisID:ax},{type:"line",label:"_hi",data:L.map(()=>b[1]),borderColor:"transparent",backgroundColor:g+"22",pointRadius:0,fill:"-1",yAxisID:ax}]:[];};
+    const line=(l,vals,c,ax,ex)=>({type:"line",label:l,data:vals,borderColor:c,backgroundColor:c,borderWidth:2,pointRadius:3,spanGaps:true,tension:.25,yAxisID:ax,...ex});
+    const o1=opt({stacked:true,title:{display:true,text:"Stunden"}});o1.scales.x.stacked=true;
+    o1.plugins.tooltip.callbacks.label=it=>` ${it.dataset.label}: ${hm(it.parsed.y*60)} h`;
+    charts.push(new Chart(cv[0],{data:{labels:lab,datasets:[...["deep","light","rem","awake"].map(p=>({type:"bar",label:SLN[p],data:L.map(n=>(n[p]||0)/60),backgroundColor:SLC[p],stack:"s",maxBarThickness:22})),
+      {type:"line",label:"Bedarf",data:L.map(n=>n.need?n.need/60:null),borderColor:css("--ink"),borderDash:[5,4],borderWidth:1.5,pointRadius:0,spanGaps:true,stepped:"middle"}]},options:o1}));
+    charts.push(new Chart(cv[1],{data:{labels:lab,datasets:[...bandDs(L.map(n=>n.score),"y"),line("Schlafwert",L.map(n=>n.score),css("--other"),"y")]},options:opt({suggestedMin:40,max:100})}));
+    charts.push(new Chart(cv[2],{data:{labels:lab,datasets:[...bandDs(L.map(n=>n.hrv),"y"),line("HRV [ms]",L.map(n=>n.hrv),g,"y"),line("Ruhepuls [bpm]",L.map(n=>n.rhr),css("--run"),"y2",{borderDash:[4,3]})]},options:opt({title:{display:true,text:"ms"}},{title:{display:true,text:"bpm"}})}));
+    charts.push(new Chart(cv[3],{data:{labels:lab,datasets:[line("Atmung [/min]",L.map(n=>n.resp),css("--swim"),"y"),line("SpO₂ [%]",L.map(n=>n.spo2),css("--other"),"y2"),line("SpO₂ tiefster [%]",L.map(n=>n.spo2min),css("--muted"),"y2",{borderWidth:1,pointRadius:2})]},options:opt({title:{display:true,text:"/min"}},{suggestedMin:88,max:100,title:{display:true,text:"%"}})}));
+    charts.slice(n0).forEach(c=>c._slt=true);
+  };
+  drawTrend();
+  // C: Regelmäßigkeit und Schlafschuld
+  const last=NN[NN.length-1].d,L14=NN.filter(n=>n.d>addD(last,-14)),L7=NN.filter(n=>n.d>addD(last,-7));
+  const debt=L=>L.reduce((s,n)=>s+(n.need?n.need-n.dur:0),0);
+  const bs=L14.map(n=>m18(n.start)),ws=L14.map(n=>m18(n.end)),sdB=sdev(bs),sdW=sdev(ws);
+  const rate=s=>s==null?["","zu wenige Nächte"]:s<=30?["good","regelmäßig"]:s<=60?["warn","schwankend"]:["bad","unregelmäßig"];
+  const t18=m=>m==null?"–":clk("18:00",m);
+  const secC=h(`<section class="panel"><div class="ph"><h2>Regelmäßigkeit und Schlafschuld</h2><span class="note">letzte 14 Tage · ${L14.length} Nächte gemessen</span></div>
+    <div class="sl-ks">
+      <div class="sl-k"><small>Einschlafen Ø</small><b>${t18(avg(bs))}</b><span class="${rate(sdB)[0]}">± ${sdB!=null?Math.round(sdB):"–"} min · ${rate(sdB)[1]}</span></div>
+      <div class="sl-k"><small>Aufwachen Ø</small><b>${t18(avg(ws))}</b><span class="${rate(sdW)[0]}">± ${sdW!=null?Math.round(sdW):"–"} min · ${rate(sdW)[1]}</span></div>
+      <div class="sl-k"><small>Schlafschuld 7 Tage</small><b class="${debt(L7)>0?"bad":"good"}">${debt(L7)>0?"−":"+"}${hm(Math.abs(debt(L7)))}</b><span>h · ${L7.length} Nächte gemessen</span></div>
+      <div class="sl-k"><small>Schlafschuld 14 Tage</small><b class="${debt(L14)>0?"bad":"good"}">${debt(L14)>0?"−":"+"}${hm(Math.abs(debt(L14)))}</b><span>h · nur gemessene Nächte</span></div>
+    </div><div class="chartbox sm"><canvas></canvas></div>
+    <p class="ro-note">Balken = Schlafenszeit je Nacht (Einschlafen bis Aufwachen). Regelmäßig heißt: Schwankung bis ±30 min. Schlafschuld = Summe aus Garmins Schlafbedarf minus geschlafene Zeit; Nächte ohne Messung zählen nicht mit.</p></section>`);
+  view.append(secC);
+  { const o=baseOpts(),L=NN.filter(n=>n.d>addD(last,-30));
+    o.scales={x:{type:"category",grid:{display:false},border:{display:false},ticks:{maxRotation:0,autoSkip:true}},y:{min:180,max:900,reverse:true,grid:{color:css("--line")},border:{display:false},ticks:{stepSize:120,callback:v=>clk("18:00",v)}}};
+    o.plugins.legend={display:false};o.plugins.tooltip.callbacks={label:it=>{const n=L[it.dataIndex];return ` ${n.start} – ${n.end} · ${hm(n.dur)} h`;}};
+    charts.push(new Chart(secC.querySelector("canvas"),{type:"bar",data:{labels:L.map(n=>dShort(n.d)),datasets:[{data:L.map(n=>{const a=m18(n.start),b=m18(n.end);return a==null||b==null?null:[a,b<a?b+1440:b];}),backgroundColor:SLC.deep+"cc",borderRadius:4,maxBarThickness:18}]},options:o})); }
+  // D: Schlaf und Training
+  renderSleepTraining(view,NN);
+}
+function hypno(N,D){
+  const tot=N.dur+(N.awake||0)||1,row={awake:0,rem:1,light:2,deep:3},W=1000,H=150,rh=H/4,x=t=>(t/tot*W).toFixed(1);
+  const bars=(D.levels||[]).map(([a,b,l])=>`<rect x="${x(a)}" y="${row[l]*rh+3}" width="${Math.max(1,(b-a)/tot*W).toFixed(1)}" height="${rh-6}" rx="2" fill="${SLC[l]}"><title>${SLN[l]} ${clk(N.start,a)}–${clk(N.start,b)}</title></rect>`).join("");
+  const ticks=[];for(let t=hourOff(N.start);t<=tot;t+=60){const xx=t/tot*W,an=xx<30?"start":xx>W-30?"end":"middle";ticks.push(`<line x1="${x(t)}" x2="${x(t)}" y1="0" y2="${H}" class="sl-gl"/><text x="${x(t)}" y="${H+14}" text-anchor="${an}" class="sl-tx">${clk(N.start,t)}</text>`);}
+  return`<div class="sl-hl">${["awake","rem","light","deep"].map(l=>`<span style="color:${SLC[l]}">${SLN[l]}</span>`).join("")}</div><svg viewBox="0 -2 ${W} ${H+20}" preserveAspectRatio="none" class="sl-svg" role="img" aria-label="Schlafphasen">${ticks.join("")}${bars}</svg>`;
+}
+function renderSleepTraining(view,NN){
+  // Nacht n gehört zum Aufwachtag n.d; das Training davor ist der Vortag
+  const A=DATA.activities||[],byDay={};A.forEach(a=>{(byDay[a.d]=byDay[a.d]||[]).push(a);});
+  const rows=NN.map(n=>{const prev=byDay[addD(n.d,-1)]||[],load=prev.reduce((s,a)=>s+(a.load||0),0),late=prev.some(a=>a.time&&a.time>="18:00");
+    return{...n,load,late,dp:n.dur?(n.deep||0)/(n.dur+(n.awake||0))*100:null};});
+  const nz=rows.filter(r=>r.load>0).map(r=>r.load).sort((a,b)=>a-b),med=nz.length>=6?nz[nz.length>>1]:150;
+  const G=[["Ruhetag davor",r=>r.load===0],[`Lockerer Tag (Last < ${Math.round(med)})`,r=>r.load>0&&r.load<med],[`Harter Tag (Last ≥ ${Math.round(med)})`,r=>r.load>=med],
+    ["Training ab 18 Uhr",r=>r.late],["Training nur vor 18 Uhr",r=>r.load>0&&!r.late]];
+  const cell=(L,k,d,u)=>{const v=avg(L.map(r=>r[k]));return v==null?"–":nf(v,d)+(u?" "+u:"");};
+  const base=rows.slice(0,-3),rec=rows.slice(-3),bH=avg(base.map(r=>r.hrv)),sH=sdev(base.map(r=>r.hrv)),bR=avg(base.map(r=>r.rhr)),sR=sdev(base.map(r=>r.rhr));
+  const enough=base.filter(r=>r.hrv!=null).length>=7,rH=avg(rec.map(r=>r.hrv)),rR=avg(rec.map(r=>r.rhr));
+  const hl=enough&&rH!=null&&rH<bH-sH,rh=enough&&rR!=null&&rR>bR+sR;
+  const warn=!enough?["","Frühwarnung ab ca. 10 Nächten mit HRV: Dann vergleiche ich die letzten 3 Nächte mit deinem Normalbereich."]:
+    hl&&rh?["bad",`Achtung: HRV der letzten 3 Nächte (${nf(rH,0)} ms) unter und Ruhepuls (${nf(rR,0)} bpm) über deinem Normalbereich. Typisches Zeichen für unvollständige Erholung: 1–2 Tage locker in Z2 130–148 bpm oder Ruhe.`]:
+    hl||rh?["warn",`Leichtes Warnzeichen: ${hl?`HRV der letzten 3 Nächte (${nf(rH,0)} ms) unter dem Normalbereich (${nf(bH-sH,0)}–${nf(bH+sH,0)})`:`Ruhepuls der letzten 3 Nächte (${nf(rR,0)} bpm) über dem Normalbereich (${nf(bR-sR,0)}–${nf(bR+sR,0)})`}. Harte Einheit eventuell verschieben.`]:
+    ["good",`Erholung unauffällig: HRV (${nf(rH,0)} ms) und Ruhepuls (${nf(rR,0)} bpm) der letzten 3 Nächte im Normalbereich.`];
+  view.append(h(`<section class="panel"><div class="ph"><h2>Schlaf und Training</h2><span class="note">Training am Vortag gegen die folgende Nacht · Trainingslast aus Garmin</span></div>
+    <div class="ts-adv ${warn[0]==="good"?"ziel":warn[0]}"><h3 class="ts-h">Frühwarnung Erholung</h3><p style="margin:4px 0 0;font-size:13px">${warn[1]}</p></div>
+    <div class="tblwrap"><table class="ro-t"><thead><tr><th style="text-align:left">Vortag</th><th>Nächte</th><th>Schlafwert</th><th>HRV</th><th>Ruhepuls</th><th>Tiefschlaf</th><th>Schlafdauer</th></tr></thead><tbody>
+    ${G.map(([l,f])=>{const L=rows.filter(f);return`<tr${L.length<3?' class="sl-few"':""}><td style="text-align:left;font-family:var(--f-body)">${l}</td><td>${L.length}</td><td>${cell(L,"score",0)}</td><td>${cell(L,"hrv",0,"ms")}</td><td>${cell(L,"rhr",0,"bpm")}</td><td>${cell(L,"dp",0,"%")}</td><td>${L.length?hm(avg(L.map(r=>r.dur))):"–"}</td></tr>`;}).join("")}
+    </tbody></table></div>
+    <p class="ro-note">Grau = weniger als 3 Nächte, noch nicht aussagekräftig. Mit jeder gemessenen Nacht wird der Vergleich belastbarer; nach 3–4 Wochen siehst du, wie stark harte oder späte Einheiten deine Erholung in der Nacht drücken.</p></section>`));
+}
 // ---- Laktatkurve (Modell) aus Garmins Schwelle und der Pace bei Referenzpuls ----
 // Anker: LT2 = Garmin-Laktatschwelle ≈ 4 mmol/l, LT1 bei 87 % der Schwellen-HF ≈ 2 mmol/l, Ruhewert 1 mmol/l.
 // Form La(v) = 1 + a·e^(b·v) durch beide Anker. Puls ↔ Tempo linear zwischen (Referenzpuls, Pace dort) und (Schwellen-HF, Schwellenpace).
@@ -1714,7 +1879,7 @@ function drawRoute(det){
 
 function renderTabs(){
   const t=document.getElementById("tabs");
-  const all=[{id:"overview",label:"Überblick"},...(DATA.plan?[{id:"plan",label:"Training"}]:[]),...(DATA.series["run.pref"]?[{id:"coach",label:"Laufoptimum"}]:[]),{id:"acts",label:"Aktivitäten"},...DATA.groups,{id:"explore",label:"Vergleich"}];
+  const all=[{id:"overview",label:"Überblick"},...(DATA.plan?[{id:"plan",label:"Training"}]:[]),...(DATA.series["run.pref"]?[{id:"coach",label:"Laufoptimum"}]:[]),...(DATA.sleep&&DATA.sleep.nights&&DATA.sleep.nights.length?[{id:"sleep",label:"Schlaf"}]:[]),{id:"acts",label:"Aktivitäten"},...DATA.groups,{id:"explore",label:"Vergleich"}];
   if(!all.some(x=>x.id===TAB))TAB="overview";
   t.innerHTML=all.map(g=>`<button class="tab" role="tab" data-id="${g.id}" aria-selected="${g.id===TAB}" style="${COLORS[g.id]?`--c:var(${COLORS[g.id]})`:""}">${COLORS[g.id]?'<span class="dot"></span>':""}${g.label}</button>`).join("");
   t.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{TAB=b.dataset.id;save();render();});
@@ -1723,9 +1888,9 @@ function render(){
   if(!DATA)return;killCharts();renderTabs();
   document.querySelectorAll("#range button").forEach(b=>b.setAttribute("aria-pressed",+b.dataset.m===RANGE));
   const view=document.getElementById("view");view.innerHTML="";
-  document.getElementById("range").hidden=TAB==="acts"||TAB==="plan";
+  document.getElementById("range").hidden=TAB==="acts"||TAB==="plan"||TAB==="sleep";
   ACT.charts.forEach(c=>c.destroy());ACT.charts=[];ACT.routeCv=null;
-  if(TAB==="overview")renderOverview(view);else if(TAB==="plan")renderTraining(view);else if(TAB==="coach")renderCoach(view);else if(TAB==="acts")renderActs(view);else if(TAB==="explore")renderExplorer(view);
+  if(TAB==="overview")renderOverview(view);else if(TAB==="plan")renderTraining(view);else if(TAB==="coach")renderCoach(view);else if(TAB==="sleep")renderSleep(view);else if(TAB==="acts")renderActs(view);else if(TAB==="explore")renderExplorer(view);
   else renderGroup(view,DATA.groups.find(g=>g.id===TAB));
   charts.forEach(c=>{if(!c._det&&c.options&&c.options.scales&&c.options.scales.x&&c.options.scales.x.min!=null)wheelZoom(c);});
   if(BIG)drawBig();

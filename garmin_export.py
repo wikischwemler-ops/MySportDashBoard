@@ -255,6 +255,69 @@ def fetch_weekly(g, start, end, full):
     c.save()
     return c.d
 
+SLEEP_DAYS = 120        # Schlaf je Nacht (Zusammenfassung) für die letzten 4 Monate
+SLEEP_DETAIL_NIGHTS = 21  # Verläufe (Phasen, Puls, HRV, Atmung, SpO2, Body Battery, Stress) nur für die letzten 3 Wochen
+SLEEP_LEVEL = {0: "deep", 1: "light", 2: "rem", 3: "awake"}
+
+def _gmt_ms(v):
+    """Garmin-Zeit (ms seit 1970 oder ISO-Text in GMT) → ms."""
+    if isinstance(v, (int, float)): return int(v)
+    if isinstance(v, str) and v:
+        return int(dt.datetime.fromisoformat(v.replace("Z", "")[:19]).replace(tzinfo=dt.timezone.utc).timestamp() * 1000)
+    return None
+
+def sleep_night(s):
+    """Garmin-Schlafdaten einer Nacht → Zusammenfassung + kompakte Verläufe (Minuten ab Einschlafen)."""
+    d = (s or {}).get("dailySleepDTO") or {}
+    if not d.get("sleepTimeSeconds"): return {}
+    t0, loc0, t1 = d.get("sleepStartTimestampGMT"), d.get("sleepStartTimestampLocal"), d.get("sleepEndTimestampLocal")
+    clock = lambda ms: dt.datetime.fromtimestamp(ms / 1000, dt.timezone.utc).strftime("%H:%M") if ms else None
+    sc, need = d.get("sleepScores") or {}, d.get("sleepNeed") or {}
+    m = lambda sec: round((sec or 0) / 60)
+    night = {"start": clock(loc0), "end": clock(t1), "dur": m(d.get("sleepTimeSeconds")),
+             "deep": m(d.get("deepSleepSeconds")), "light": m(d.get("lightSleepSeconds")), "rem": m(d.get("remSleepSeconds")),
+             "awake": m(d.get("awakeSleepSeconds")), "awakes": d.get("awakeCount"),
+             "score": dig(sc, "overall", "value"), "q": dig(sc, "overall", "qualifierKey"), "need": need.get("actual") or need.get("baseline"),
+             "hr": d.get("avgHeartRate"), "rhr": s.get("restingHeartRate"), "hrv": s.get("avgOvernightHrv"), "hrv_st": s.get("hrvStatus"),
+             "resp": d.get("averageRespirationValue"), "spo2": d.get("averageSpO2Value"), "spo2min": d.get("lowestSpO2Value"),
+             "restless": s.get("restlessMomentsCount"), "stress": d.get("avgSleepStress"), "bb": s.get("bodyBatteryChange"),
+             "skin": s.get("avgSkinTempDeviationC"), "fb": d.get("sleepScoreFeedback"),
+             "opt": {k: [dig(sc, k + "Percentage", "optimalStart"), dig(sc, k + "Percentage", "optimalEnd")] for k in ("deep", "light", "rem")}}
+    if not t0: return {"n": night}
+    rel = lambda v: None if _gmt_ms(v) is None else round((_gmt_ms(v) - t0) / 60000, 1)
+    def series(lst, tk, vk, ok=lambda v: v is not None and v > 0, step=0):
+        out, last = [], None
+        for x in lst or []:
+            t, v = rel(x.get(tk)), x.get(vk)
+            if t is None or not ok(v) or (step and last is not None and t - last < step): continue
+            out.append([t, round(v, 1) if isinstance(v, float) else v]); last = t
+        return out
+    det = {"levels": [[rel(x.get("startGMT")), rel(x.get("endGMT")), SLEEP_LEVEL.get(int(x.get("activityLevel") or 0), "light")]
+                      for x in s.get("sleepLevels") or [] if x.get("startGMT")],
+           "hr": series(s.get("sleepHeartRate"), "startGMT", "value"),
+           "hrv": series(s.get("hrvData"), "startGMT", "value"),
+           "resp": series(s.get("wellnessEpochRespirationDataDTOList"), "startTimeGMT", "respirationValue", step=2),
+           "spo2": series(s.get("wellnessEpochSPO2DataDTOList"), "epochTimestamp", "spo2Reading", step=5),
+           "bb": series(s.get("sleepBodyBattery"), "startGMT", "value", ok=lambda v: v is not None and v >= 0),
+           "stress": series(s.get("sleepStress"), "startGMT", "value", ok=lambda v: v is not None and v >= 0)}
+    return {"n": night, "det": det}
+
+def fetch_sleep(g, end, full):
+    """Schlaf je Nacht der letzten SLEEP_DAYS (Cache `sleep`, nur neue bzw. noch nicht abgeschlossene Nächte)."""
+    c = Cache("sleep")
+    if full: c.d = {}
+    limit = (dt.date.today() - dt.timedelta(days=FINAL_AFTER_DAYS)).isoformat()
+    first = end - dt.timedelta(days=SLEEP_DAYS - 1)
+    todo = [d for d in days(first, end, 1) if not (c.has(d.isoformat()) and d.isoformat() < limit)]
+    log(f"Schlaf: {len(todo)} Nächte …")
+    for d in todo:
+        c.put(d.isoformat(), sleep_night(call(g.get_sleep_data, d.isoformat()) or {}))
+    c.save()
+    keys = sorted(k for k in c.d if k >= first.isoformat() and (c.get(k) or {}).get("n"))
+    det_keys = set(keys[-SLEEP_DETAIL_NIGHTS:])
+    return {"nights": [{"d": k, **c.get(k)["n"]} for k in keys],
+            "detail": {k: c.get(k)["det"] for k in det_keys if c.get(k).get("det")}}
+
 STATUS_DAYS = 84   # Trainingsstatus tageweise für die letzten 12 Wochen
 def fetch_status_daily(g, end, full):
     """Trainingsstatus je Tag (letzte STATUS_DAYS): Status, akute/chronische Last mit Optimalbereich, ACWR, VO2max, Load-Fokus."""
@@ -607,7 +670,8 @@ def build(acts, daily, weekly, rng, start, end):
                         "name": a.get("name", ""), "km": round((a["dist"] or 0) / 1000, 2), "dur": round(a["dur"] or 0),
                         "elev": round(a["elev"] or 0), "hr": a.get("hr") and round(a["hr"]), "maxhr": a.get("maxhr"),
                         "pwr": a.get("pwr") and round(a["pwr"]), "cal": a.get("cal") and round(a["cal"]),
-                        "te": a.get("te"), "race": a.get("event") == "race"} for a in acts if a.get("id")),
+                        "te": a.get("te"), "race": a.get("event") == "race",
+                        "load": a.get("load") and round(a["load"])} for a in acts if a.get("id")),   # Trainingslast (für Schlaf ↔ Training)
                       key=lambda x: (x["d"], x["time"]))
     extra = {"loadfocus": [[week_of(k)] + [weekly[k].get(x) for x in ("lf_low", "lf_low_min", "lf_low_max", "lf_high", "lf_high_min",
                                      "lf_high_max", "lf_ana", "lf_ana_min", "lf_ana_max", "lf_fb")]
@@ -821,6 +885,7 @@ def run_export(tokens=None, years=4.0, out=None, full=False, no_health=False, in
                        for z in zs if isinstance(z, dict) and z.get("zone1Floor")]
     if not a.no_health:
         data["trainstat"] = build_trainstat(fetch_status_daily(g, end, a.full), acts)
+        data["sleep"] = fetch_sleep(g, end, a.full)
     data["plan"] = fetch_plan(g, end)
     log(f"Trainingsplan: {len(data['plan']['items'])} geplante Workouts, {len(data['plan']['events'])} Wettkämpfe")
     act_list = data.pop("activities")          # Einzelaktivitäten getrennt von den Kennlinien
