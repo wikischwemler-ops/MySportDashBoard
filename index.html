@@ -870,11 +870,24 @@ const sdev=a=>{const v=a.filter(x=>x!=null),m=avg(v);return v.length>1?Math.sqrt
 // Uhrzeit → Minuten ab 18 Uhr (Abend und Morgen auf einer Achse)
 const hourOff=start=>{const[a,b]=(start||"0:0").split(":").map(Number);return(60-b)%60;};   // Minuten bis zur nächsten vollen Stunde
 const m18=t=>{if(!t)return null;const[a,b]=t.split(":").map(Number);return((a*60+b)-1080+1440)%1440;};
+const SL_MA=30;   // gleitendes Mittel über ±15 min
+function slMa(pts,w=SL_MA){return pts.map(p=>{const v=pts.filter(q=>Math.abs(q.x-p.x)<=w/2).map(q=>q.y);return{x:p.x,y:v.reduce((s,x)=>s+x,0)/v.length};});}
+function slTrend(pts){const n=pts.length;if(n<3)return null;const mx=pts.reduce((s,p)=>s+p.x,0)/n,my=pts.reduce((s,p)=>s+p.y,0)/n;
+  const sxx=pts.reduce((s,p)=>s+(p.x-mx)**2,0);if(!sxx)return null;const k=pts.reduce((s,p)=>s+(p.x-mx)*(p.y-my),0)/sxx;
+  const x0=pts[0].x,x1=pts[n-1].x;return{k,data:[{x:x0,y:my+k*(x0-mx)},{x:x1,y:my+k*(x1-mx)}]};}
 function sleepTimeChart(canvas,N,D,ds,yAx){
+  // je Kennlinie drei Datensätze: Rohwerte (blass), gleitendes Mittel (kräftig), Trend (gestrichelt); Legende schaltet alle drei
+  const all=[];ds.forEach((d,g)=>{const c=d.borderColor,pts=d.data,tr=slTrend(pts),dec=d._u==="ms"||d._u==="bpm"?1:2;
+    const slope=tr?`${tr.k*60>=0?"+":"−"}${nf(Math.abs(tr.k*60),dec)}${d._u?" "+d._u:""}/h`:"";
+    all.push({...d,label:`${d.label}${slope?` (Trend ${slope})`:""}`,borderColor:c+"55",backgroundColor:c+"55",borderWidth:1,pointRadius:0,_g:g,_raw:true});
+    if(pts.length>2)all.push({...d,label:`_${d.label} Ø ${SL_MA} min`,data:slMa(pts),borderWidth:2.6,pointRadius:0,tension:.35,_g:g});
+    if(tr)all.push({...d,label:`_${d.label} Trend`,data:tr.data,borderWidth:1.6,borderDash:[6,4],pointRadius:0,tension:0,_g:g});});
   const o=baseOpts();o.scales={x:{type:"linear",min:0,max:N.dur+N.awake,grid:{color:css("--line")},border:{display:false},ticks:{callback:v=>clk(N.start,v)},afterBuildTicks:ax=>{const o=hourOff(N.start),t=[];for(let v=o;v<=N.dur+N.awake;v+=60)t.push({value:v});ax.ticks=t;}},...yAx};
-  o.plugins.legend={display:true,position:"bottom",labels:{boxWidth:14,boxHeight:3}};o.plugins.tooltip.mode="nearest";o.plugins.tooltip.intersect=false;
-  o.plugins.tooltip.callbacks={title:it=>clk(N.start,it[0].parsed.x),label:it=>` ${it.dataset.label}: ${nf(it.parsed.y,it.dataset._dec||0)} ${it.dataset._u||""}`};
-  charts.push(new Chart(canvas,{type:"line",data:{datasets:ds},options:o}));
+  o.plugins.legend={display:true,position:"bottom",labels:{boxWidth:14,boxHeight:3,filter:it=>!it.text.startsWith("_"),generateLabels:c=>Chart.defaults.plugins.legend.labels.generateLabels(c).map(l=>({...l,fillStyle:c.data.datasets[l.datasetIndex].borderColor.slice(0,7),strokeStyle:c.data.datasets[l.datasetIndex].borderColor.slice(0,7)}))},
+    onClick:(e,it,lg)=>{const c=lg.chart,g=c.data.datasets[it.datasetIndex]._g,vis=c.isDatasetVisible(it.datasetIndex);c.data.datasets.forEach((d,i)=>{if(d._g===g)c.setDatasetVisibility(i,!vis);});c.update();}};
+  o.plugins.tooltip.mode="nearest";o.plugins.tooltip.intersect=false;o.plugins.tooltip.filter=it=>it.dataset._raw||it.dataset.label.includes(" Ø ");
+  o.plugins.tooltip.callbacks={title:it=>clk(N.start,it[0].parsed.x),label:it=>` ${it.dataset.label.replace(/^_/,"").replace(/ \(Trend.*\)$/,"")}: ${nf(it.parsed.y,it.dataset._dec||0)} ${it.dataset._u||""}`};
+  charts.push(new Chart(canvas,{type:"line",data:{datasets:all},options:o}));
 }
 function renderSleep(view){
   const S=DATA.sleep,NN=(S&&S.nights)||[];
@@ -910,12 +923,12 @@ function renderSleep(view){
         <div><h3 class="ts-h">Puls und HRV</h3><div class="chartbox sm"><canvas id="slc1"></canvas></div></div>
         <div><h3 class="ts-h">Atmung und SpO₂</h3><div class="chartbox sm"><canvas id="slc2"></canvas></div></div>
         <div><h3 class="ts-h">Body Battery und Stress</h3><div class="chartbox sm"><canvas id="slc3"></canvas></div></div>
-      </div>`;
+      </div><p class="ro-note">Blass = Messwerte, kräftig = gleitendes Mittel über ${SL_MA} min, gestrichelt = linearer Trend über die Nacht (Wert in der Legende je Stunde). Klick auf die Legende blendet eine Kennlinie samt Mittel und Trend aus.</p>`;
     secA.querySelector("#slp").onclick=()=>{SL.i--;drawNight();};secA.querySelector("#sln").onclick=()=>{SL.i++;drawNight();};
     const P=a=>(a||[]).map(p=>({x:p[0],y:p[1]})),ax=(pos,t,ex)=>({position:pos,grid:{color:pos==="left"?css("--line"):"transparent"},border:{display:false},title:{display:true,text:t},...ex});
     const ln=(l,d,c,ax2,u,ex)=>({label:l,data:P(d),borderColor:c,backgroundColor:c,borderWidth:1.8,pointRadius:0,tension:.3,yAxisID:ax2,_u:u,...ex});
     const n0=charts.length;
-    sleepTimeChart(secA.querySelector("#slc1"),N,D,[ln("Puls",D.hr,css("--run"),"y","bpm"),ln("HRV",D.hrv,css("--good"),"y2","ms",{pointRadius:1.5})],{y:ax("left","bpm"),y2:ax("right","ms")});
+    sleepTimeChart(secA.querySelector("#slc1"),N,D,[ln("Puls",D.hr,css("--run"),"y","bpm"),ln("HRV",D.hrv,css("--good"),"y2","ms")],{y:ax("left","bpm"),y2:ax("right","ms")});
     sleepTimeChart(secA.querySelector("#slc2"),N,D,[ln("Atmung",D.resp,css("--swim"),"y","/min"),ln("SpO₂",D.spo2,css("--other"),"y2","%")],{y:ax("left","/min"),y2:ax("right","%",{suggestedMin:90,max:100})});
     sleepTimeChart(secA.querySelector("#slc3"),N,D,[ln("Body Battery",D.bb,css("--bike"),"y",""),ln("Stress",D.stress,css("--fit"),"y","",{borderWidth:1.2})],{y:ax("left","",{min:0,max:100})});
     charts.slice(n0).forEach(c=>c._sl=true);
