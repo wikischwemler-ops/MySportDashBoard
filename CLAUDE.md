@@ -46,6 +46,8 @@ Vorhandene Kennlinien in `fit`: VO2max Laufen/Rad, Fitnessalter, Ausdauerwert, H
 
 Sportzuordnung über `RUN`, `BIKE`, `SWIM` in `garmin_export.py`, alles andere ist „Sonstige“. Ändert sich der Inhalt der Detailverläufe, `DETAIL_VERSION` erhöhen (alte Cache-Dateien werden dann neu geladen).
 
+**Cursor in den Verläufen der Einzelaktivität** (`syncPlug` in `buildDetail`, `valAt`, `hover`): Der Cursor klebt an jeder Kennlinie. Je Diagramm Punkt auf der Linie (zwischen Messpunkten linear interpoliert, Treppenkurven im Schwimmen gehaltener Wert), senkrechte und waagerechte Hilfslinie und ein Label mit x- und y-Wert; dieselben Werte stehen rechts in der Kopfzeile des Diagramms. Alle Diagramme laufen synchron mit dem Zeiger.
+
 ## Garmin: Erkenntnisse
 
 - Token-Reihenfolge: `--tokens`, `config.json`, `.garminconnect` neben dem Programm, `%USERPROFILE%\.garminconnect`. Tokens halten etwa ein Jahr.

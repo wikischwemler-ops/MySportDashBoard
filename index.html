@@ -1614,7 +1614,17 @@ function buildDetail(a,det){
   const step=Math.max(1,Math.ceil(X.length/1100));
   const syncPlug={id:"sync",afterDatasetsDraw(ch){const{ctx,chartArea:ca,scales:{x}}=ch;ctx.save();
     if(ACT.selr){const p1=x.getPixelForValue(Math.min(...ACT.selr)),p2=x.getPixelForValue(Math.max(...ACT.selr));ctx.fillStyle=css("--accent")+"26";ctx.fillRect(p1,ca.top,p2-p1,ca.bottom-ca.top);}
-    if(ACT.hx!=null){const p=x.getPixelForValue(ACT.hx);if(p>=ca.left&&p<=ca.right){ctx.strokeStyle=css("--ink");ctx.globalAlpha=.55;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p,ca.top);ctx.lineTo(p,ca.bottom);ctx.stroke();}}
+    if(ACT.hx!=null){const p=x.getPixelForValue(ACT.hx);if(p>=ca.left&&p<=ca.right){ctx.strokeStyle=css("--ink");ctx.globalAlpha=.55;ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p,ca.top);ctx.lineTo(p,ca.bottom);ctx.stroke();ctx.globalAlpha=1;
+      // Cursor klebt an der Kennlinie: Punkt auf dem Verlauf, waagerechte Hilfslinie zur y-Achse, Beschriftung mit x- und y-Wert
+      const v=valAt(ch,ACT.hx);if(v){const py=ch.scales.y.getPixelForValue(v.y);
+        if(py>=ca.top&&py<=ca.bottom){
+          ctx.globalAlpha=.4;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(ca.left,py);ctx.lineTo(p,py);ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;
+          const c0=ch.data.datasets[0].borderColor;ctx.fillStyle=css("--panel");ctx.strokeStyle=c0;ctx.lineWidth=2.5;ctx.beginPath();ctx.arc(p,py,5,0,Math.PI*2);ctx.fill();ctx.stroke();
+          const txt=`${xFmt(v.x)}  ·  ${fmtC(ch._cd,v.y)} ${ch._cd.u||""}`,fs=tickPx();ctx.font=`600 ${fs}px ${css("--f-mono")||"monospace"}`;
+          const tw=ctx.measureText(txt).width+14,th=fs+10;let bx=p+12,by=py-th-10;
+          if(bx+tw>ca.right)bx=p-12-tw;if(bx<ca.left)bx=ca.left;if(by<ca.top)by=py+10;if(by+th>ca.bottom)by=ca.bottom-th;
+          ctx.fillStyle=css("--panel");ctx.strokeStyle=c0;ctx.lineWidth=1.2;ctx.fillRect(bx,by,tw,th);ctx.strokeRect(bx,by,tw,th);
+          ctx.fillStyle=css("--ink");ctx.textBaseline="middle";ctx.fillText(txt,bx+7,by+th/2+.5);}}}}
     ctx.restore();}};
   keys.forEach(([k,lbl,colv])=>{
     const cd=chanDef(k,a.sp),col=colv==="SPORT"?css(SP[a.sp].v):css(colv),raw=det.ch[k];
@@ -1626,7 +1636,7 @@ function buildDetail(a,det){
       scales:{x:{type:"linear",min:ACT.zoom?ACT.zoom[0]:xMin,max:ACT.zoom?ACT.zoom[1]:xMax,grid:{color:css("--line"),drawTicks:false},border:{display:false},ticks:{maxTicksLimit:7,padding:4,callback:v=>xFmt(v),color:css("--muted"),font:{size:tickPx()}}},
         y:{reverse:!!cd.pace,...yRange(pts,cd),grid:{color:css("--line")},border:{display:false},ticks:{maxTicksLimit:4,padding:4,callback:v=>fmtC(cd,v),color:css("--muted"),font:{size:tickPx()}},afterFit:s=>{s.width=tickPx()*4.6;}}}};
     const chart=new Chart(el.querySelector("canvas"),{type:"line",data:{datasets:[{data:pts,borderColor:col,backgroundColor:col+"33",fill:k==="elev"?"start":k==="vspeed"?"origin":(cd.pace?"end":"start"),borderWidth:1.4,pointRadius:0,tension:det.swim&&k!=="hr"?0:.15,stepped:det.swim&&k!=="hr"?"before":false,spanGaps:!(det.swim&&k!=="hr")}]},options:o,plugins:[syncPlug]});
-    chart._det=true;chart._k=k;chart._cd=cd;chart._pts=pts;chart._raw=raw;ACT.charts.push(chart);
+    chart._det=true;chart._k=k;chart._cd=cd;chart._pts=pts;chart._raw=raw;chart._stp=!!(det.swim&&k!=="hr");ACT.charts.push(chart);
     chart._isZoomed=()=>!!ACT.zoom||!!chart._yz;chart._resetZoom=()=>{ACT.charts.forEach(resetY);ACT.zoom=null;applyZoom();};
     // Zeiger, Ziehen zum Zoomen
     const cv=el.querySelector("canvas");let drag=null;
@@ -1849,9 +1859,13 @@ function zoomBy(f,cx){if(!ACT.full)return;const[lo,hi]=curRange();const c=cx??(l
   let nlo=c-(c-lo)*f,nhi=c+(hi-c)*f;if(nhi-nlo<minW){nlo=c-minW/2;nhi=c+minW/2;}setZoom(nlo,nhi);}
 function panBy(f){if(!ACT.zoom)return;const[lo,hi]=ACT.zoom,d=(hi-lo)*f;setZoom(lo+d,hi+d);}
 function nearest(pts,x){let lo=0,hi=pts.length-1;if(hi<0)return null;while(hi-lo>1){const m=(lo+hi)>>1;pts[m].x<x?lo=m:hi=m;}return Math.abs(pts[lo].x-x)<Math.abs(pts[hi].x-x)?pts[lo]:pts[hi];}
+// Wert der Kennlinie an der Cursorposition x: zwischen zwei Messpunkten linear interpoliert (Treppenkurven im Schwimmen: gehaltener Wert), damit der Cursor genau auf der gezeichneten Linie liegt
+function valAt(c,x){const p=c._pts;if(!p||!p.length||x<p[0].x||x>p[p.length-1].x)return null;
+  let lo=0,hi=p.length-1;while(hi-lo>1){const m=(lo+hi)>>1;p[m].x<=x?lo=m:hi=m;}
+  const a=p[lo],b=p[hi];if(c._stp)return{x,y:b.y};const t=b.x>a.x?(x-a.x)/(b.x-a.x):0;return{x,y:a.y+(b.y-a.y)*t};}
 function hover(){
   ACT.charts.forEach(c=>{c.draw();const el=document.querySelector(`[data-rd="${c._k}"]`);if(!el)return;
-    const p=ACT.hx==null?null:nearest(c._pts,ACT.hx);el.textContent=p?fmtC(c._cd,p.y)+" "+c._cd.u:"–";});
+    const v=ACT.hx==null?null:valAt(c,ACT.hx);el.textContent=v?xFmt(v.x)+" · "+fmtC(c._cd,v.y)+" "+c._cd.u:"–";});
   drawRoute(ACT.det);
 }
 function applyZoom(){setTimeout(()=>ACT.charts.forEach(c=>c._cur&&c._cur()),0);
